@@ -7,28 +7,28 @@
 ```
 1. Load plan.md from feature directory
    → If not found: ERROR "No implementation plan found"
-   → Extract: tech stack, libraries, structure
+   → Extract: Go modules, packages, structure, constitutional obligations
 2. Load optional design documents:
-   → data-model.md: Extract entities → model tasks
-   → contracts/: Each file → contract test task
-   → research.md: Extract decisions → setup tasks
+   → data-model.md: Extract entities → installer/service tasks
+   → contracts/: Each file → contract/e2e test task
+   → research.md: Extract decisions → setup/benchmark tasks
 3. Generate tasks by category:
-   → Setup: project init, dependencies, linting
-   → Tests: contract tests, integration tests
-   → Core: models, services, CLI commands
-   → Integration: DB, middleware, logging
-   → Polish: unit tests, performance, docs
+   → Setup: module scaffolding, tooling, linting
+   → Tests: unit (pkg/internal), integration (envtest/kind), e2e CLI flows
+   → Core: installers, kube clients, telemetry, CLI commands
+   → Integration: performance benchmarks, logging, rollout/rollback
+   → Polish: docs, runbooks, UX assets
 4. Apply task rules:
-   → Different files = mark [P] for parallel
-   → Same file = sequential (no [P])
+   → Different files/packages = mark [P] for parallel
+   → Same file/package = sequential (no [P])
    → Tests before implementation (TDD)
 5. Number tasks sequentially (T001, T002...)
 6. Generate dependency graph
 7. Create parallel execution examples
 8. Validate task completeness:
    → All contracts have tests?
-   → All entities have models?
-   → All endpoints implemented?
+   → All principles represented?
+   → Benchmarks + dry-run artifacts captured?
 9. Return: SUCCESS (tasks ready for execution)
 ```
 
@@ -37,91 +37,88 @@
 - Include exact file paths in descriptions
 
 ## Path Conventions
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- CLI entrypoints live in `cmd/chainctl/...`
+- Shared logic lives in `pkg/...` or `internal/...`
+- Tests live in `test/unit`, `test/integration`, and `test/e2e`
+- Benchmarks live alongside the package under test (e.g., `pkg/installer/installer_bench_test.go`)
 
 ## Phase 3.1: Setup
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T001 Ensure go.mod/go.sum reflect new dependencies; run `go mod tidy`
+- [ ] T002 Configure golangci-lint and gofumpt pipelines; update `Makefile` or CI if needed
+- [ ] T003 [P] Scaffold package and directory structure per plan (e.g., `pkg/installer`, `cmd/chainctl/install`)
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
-- [ ] T004 [P] Contract test POST /api/users in tests/contract/test_users_post.py
-- [ ] T005 [P] Contract test GET /api/users/{id} in tests/contract/test_users_get.py
-- [ ] T006 [P] Integration test user registration in tests/integration/test_registration.py
-- [ ] T007 [P] Integration test auth flow in tests/integration/test_auth.py
+- [ ] T004 [P] Unit tests in `test/unit/<feature>_test.go` covering pure functions and error paths
+- [ ] T005 [P] Integration tests in `test/integration/<feature>_test.go` using envtest/kind to exercise kube interactions
+- [ ] T006 [P] CLI e2e test in `test/e2e/<command>_test.go` validating `--dry-run`, `--confirm`, and idempotent reruns
+- [ ] T007 Benchmarks in `<package>_bench_test.go` capturing performance budgets and success metrics
 
 ## Phase 3.3: Core Implementation (ONLY after tests are failing)
-- [ ] T008 [P] User model in src/models/user.py
-- [ ] T009 [P] UserService CRUD in src/services/user_service.py
-- [ ] T010 [P] CLI --create-user in src/cli/user_commands.py
-- [ ] T011 POST /api/users endpoint
-- [ ] T012 GET /api/users/{id} endpoint
-- [ ] T013 Input validation
-- [ ] T014 Error handling and logging
+- [ ] T008 [P] Implement installer workflow in `pkg/installer/<feature>.go` with structured logging hooks
+- [ ] T009 [P] Extend kubeclient adapters in `internal/kubeclient/<feature>.go`
+- [ ] T010 Wire CLI command in `cmd/chainctl/<command>/command.go` with UX-parity flags and output modes
+- [ ] T011 Implement rollback/feature flag logic in `pkg/installer/<feature>_rollback.go`
+- [ ] T012 Ensure telemetry emission in `pkg/telemetry/<feature>.go`
 
-## Phase 3.4: Integration
-- [ ] T015 Connect UserService to DB
-- [ ] T016 Auth middleware
-- [ ] T017 Request/response logging
-- [ ] T018 CORS and security headers
+## Phase 3.4: Integration & Validation
+- [ ] T013 Validate performance via `go test -bench` and capture baseline artifacts
+- [ ] T014 Record `--dry-run` output and update operator docs/log samples
+- [ ] T015 Verify memory and goroutine budgets using `go test -run Benchmark -bench . -benchtime=1x`
+- [ ] T016 Update runbooks in `docs/runbooks/<feature>.md`
 
 ## Phase 3.5: Polish
-- [ ] T019 [P] Unit tests for validation in tests/unit/test_validation.py
-- [ ] T020 Performance tests (<200ms)
-- [ ] T021 [P] Update docs/api.md
-- [ ] T022 Remove duplication
-- [ ] T023 Run manual-testing.md
+- [ ] T017 [P] Update `docs/cli/commands.md` with syntax, examples, and json output contract
+- [ ] T018 [P] Add changelog entry in `CHANGELOG.md`
+- [ ] T019 Finalize configuration examples in `examples/<feature>/values.yaml`
+- [ ] T020 Run `make lint test` (or equivalent) and attach artifacts to PR description
 
 ## Dependencies
-- Tests (T004-T007) before implementation (T008-T014)
-- T008 blocks T009, T015
-- T016 blocks T018
-- Implementation before polish (T019-T023)
+- Tests (T004-T007) before implementation (T008-T012)
+- T008 blocks T011 and telemetry integration
+- Performance validation (T013-T015) requires implementation complete
+- Documentation tasks (T014-T019) depend on finalized UX/metrics
 
 ## Parallel Example
 ```
-# Launch T004-T007 together:
-Task: "Contract test POST /api/users in tests/contract/test_users_post.py"
-Task: "Contract test GET /api/users/{id} in tests/contract/test_users_get.py"
-Task: "Integration test registration in tests/integration/test_registration.py"
-Task: "Integration test auth in tests/integration/test_auth.py"
+# Launch independent test authoring together:
+Task: "Unit tests in test/unit/<feature>_test.go"
+Task: "Integration tests in test/integration/<feature>_test.go"
+Task: "CLI e2e test in test/e2e/<command>_test.go"
+Task: "Benchmarks in pkg/installer/<feature>_bench_test.go"
 ```
 
 ## Notes
-- [P] tasks = different files, no dependencies
+- [P] tasks = different files/packages, no shared state
 - Verify tests fail before implementing
-- Commit after each task
-- Avoid: vague tasks, same file conflicts
+- Attach lint/test/benchmark artifacts to PR
+- Ensure every task references relevant constitutional principles (P1–P5)
 
 ## Task Generation Rules
 *Applied during main() execution*
 
-1. **From Contracts**:
-   - Each contract file → contract test task [P]
-   - Each endpoint → implementation task
+1. **From Contracts & CLI specs**:
+   - Each contract file → e2e test + CLI task
+   - Each CLI flag/command → UX validation task (dry-run, json output)
    
 2. **From Data Model**:
-   - Each entity → model creation task [P]
-   - Relationships → service layer tasks
+   - Each entity → installer/package update + validation tests
+   - Relationships → kubeclient or dependency wiring tasks
    
 3. **From User Stories**:
-   - Each story → integration test [P]
-   - Quickstart scenarios → validation tasks
+   - Each operator scenario → e2e test + doc sample
+   - Failure stories → rollback coverage tasks
 
 4. **Ordering**:
-   - Setup → Tests → Models → Services → Endpoints → Polish
+   - Setup → Tests → Installer packages → CLI wiring → Validation → Docs
    - Dependencies block parallel execution
 
 ## Validation Checklist
 *GATE: Checked by main() before returning*
 
-- [ ] All contracts have corresponding tests
-- [ ] All entities have model tasks
-- [ ] All tests come before implementation
-- [ ] Parallel tasks truly independent
-- [ ] Each task specifies exact file path
-- [ ] No task modifies same file as another [P] task
+- [ ] All principles P1–P5 have explicit coverage in tasks
+- [ ] Tests precede implementation work
+- [ ] Performance/benchmark tasks exist for installer changes
+- [ ] CLI UX tasks cover dry-run/confirm/json flows
+- [ ] Documentation/runbook updates are present
+- [ ] No [P] task shares a file or package with another [P] task

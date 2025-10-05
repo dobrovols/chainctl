@@ -1,0 +1,18 @@
+{
+  "exporter": "stdout",
+  "events": [
+    {
+      "timestamp": "2025-10-05T00:00:00Z",
+      "phase": "bootstrap",
+      "outcome": "start",
+      "metadata": {"mode": "bootstrap"}
+    },
+    {
+      "timestamp": "2025-10-05T00:00:01Z",
+      "phase": "bootstrap",
+      "outcome": "success",
+      "duration": "100ms",
+      "metadata": {"mode": "bootstrap"}
+    }
+  ]
+}

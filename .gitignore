@@ -1,0 +1,16 @@
+# Build and module artifacts
+bin/
+*.exe
+*.test
+
+# Go tooling caches
+.gocache/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Generated docs/artifacts
+artifacts/
