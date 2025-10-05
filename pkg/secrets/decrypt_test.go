@@ -86,3 +86,62 @@ func TestDecryptFile_InvalidEnvelope(t *testing.T) {
 		t.Fatalf("expected error for invalid envelope")
 	}
 }
+
+func TestEncryptFileValidatesPaths(t *testing.T) {
+	if _, err := secrets.EncryptFile(secrets.EncryptOptions{}); err == nil {
+		t.Fatalf("expected error when input/output missing")
+	}
+}
+
+func TestEncryptFileRequiresPassphrase(t *testing.T) {
+	tempDir := t.TempDir()
+	input := filepath.Join(tempDir, "values.yaml")
+	if err := os.WriteFile(input, []byte("image: test\n"), 0o600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	if _, err := secrets.EncryptFile(secrets.EncryptOptions{InputPath: input, OutputPath: filepath.Join(tempDir, "values.enc")}); err == nil {
+		t.Fatalf("expected passphrase validation error")
+	}
+}
+
+func TestEncryptFilePreventOverwrite(t *testing.T) {
+	tempDir := t.TempDir()
+	input := filepath.Join(tempDir, "values.yaml")
+	output := filepath.Join(tempDir, "values.enc")
+
+	if err := os.WriteFile(input, []byte("foo: bar\n"), 0o600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+	if err := os.WriteFile(output, []byte("existing"), 0o600); err != nil {
+		t.Fatalf("write output: %v", err)
+	}
+
+	if _, err := secrets.EncryptFile(secrets.EncryptOptions{
+		InputPath:  input,
+		OutputPath: output,
+		Passphrase: "secret",
+	}); err == nil {
+		t.Fatalf("expected error when overwrite not confirmed")
+	}
+}
+
+func TestEncryptFileRejectsEmptyPayload(t *testing.T) {
+	tempDir := t.TempDir()
+	input := filepath.Join(tempDir, "values.yaml")
+	output := filepath.Join(tempDir, "values.enc")
+
+	emptyContent := "   \n"
+	if err := os.WriteFile(input, []byte(emptyContent), 0o600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	if _, err := secrets.EncryptFile(secrets.EncryptOptions{
+		InputPath:  input,
+		OutputPath: output,
+		Passphrase: "secret",
+		Overwrite:  true,
+	}); err == nil {
+		t.Fatalf("expected error for empty input file")
+	}
+}

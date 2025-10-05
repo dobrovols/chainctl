@@ -15,6 +15,12 @@ import (
 	secrethandler "github.com/dobrovols/chainctl/pkg/secrets"
 )
 
+var (
+	isTerminal   = term.IsTerminal
+	readPassword = term.ReadPassword
+	stdinFD      = func() int { return int(os.Stdin.Fd()) }
+)
+
 // NewEncryptCommand returns the `chainctl encrypt-values` command implementation.
 func NewEncryptCommand() *cobra.Command {
 	var inputPath string
@@ -91,19 +97,20 @@ func NewEncryptCommand() *cobra.Command {
 }
 
 func promptForPassphrase(writer io.Writer) (string, error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	fd := stdinFD()
+	if !isTerminal(fd) {
 		return "", errors.New("passphrase must be provided via --passphrase in non-interactive mode")
 	}
 
 	fmt.Fprint(writer, "Enter passphrase: ")
-	pass1, err := term.ReadPassword(int(os.Stdin.Fd()))
+	pass1, err := readPassword(fd)
 	fmt.Fprintln(writer)
 	if err != nil {
 		return "", err
 	}
 
 	fmt.Fprint(writer, "Confirm passphrase: ")
-	pass2, err := term.ReadPassword(int(os.Stdin.Fd()))
+	pass2, err := readPassword(fd)
 	fmt.Fprintln(writer)
 	if err != nil {
 		zero(pass1)

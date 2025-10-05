@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -55,6 +58,29 @@ func (f *fakeHelm) Install(p *config.Profile, b *bundle.Bundle) error {
 
 func telemetryStub(w io.Writer) *telemetry.Emitter {
 	return telemetry.NewEmitter(w)
+}
+
+func TestNewInstallCommandRegistersFlags(t *testing.T) {
+	cmd := clustercmd.NewInstallCommand()
+	for _, name := range []string{
+		"bootstrap", "cluster-endpoint", "k3s-version", "values-file", "values-passphrase", "bundle-path", "airgapped", "dry-run", "output",
+	} {
+		if cmd.Flag(name) == nil {
+			t.Fatalf("expected flag %s to be defined", name)
+		}
+	}
+}
+
+func TestInstallCommandSentinelsExposeErrors(t *testing.T) {
+	if clustercmd.ErrBundleRequired() == nil {
+		t.Fatalf("expected ErrBundleRequired to return non-nil error")
+	}
+	if clustercmd.ErrValuesFileRequired() == nil {
+		t.Fatalf("expected ErrValuesFileRequired to return non-nil error")
+	}
+	if clustercmd.ErrUnsupportedOutput() == nil {
+		t.Fatalf("expected ErrUnsupportedOutput to return non-nil error")
+	}
 }
 
 func TestClusterInstallCommand_TextSuccess(t *testing.T) {
@@ -280,5 +306,95 @@ func TestClusterInstallCommand_ReuseValidatesCluster(t *testing.T) {
 	}
 	if !validatorCalled {
 		t.Fatalf("expected cluster validator to be called")
+	}
+}
+
+func TestClusterInstallCommand_UnsupportedOutput(t *testing.T) {
+	deps := clustercmd.InstallDeps{
+		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		Bootstrapper:     &fakeBootstrap{},
+		HelmInstaller:    &fakeHelm{},
+		TelemetryEmitter: telemetryStub,
+	}
+
+	opts := clustercmd.InstallOptions{
+		Bootstrap:        true,
+		ValuesFile:       "/tmp/values.enc",
+		ValuesPassphrase: "secret",
+		Output:           "yaml",
+	}
+
+	err := clustercmd.RunInstallForTest(&cobra.Command{}, opts, deps)
+	if !errors.Is(err, clustercmd.ErrUnsupportedOutput()) {
+		t.Fatalf("expected unsupported output error, got %v", err)
+	}
+}
+
+func TestClusterInstallCommand_AirgappedLoadsBundle(t *testing.T) {
+	var called bool
+	deps := clustercmd.InstallDeps{
+		Inspector: stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		BundleLoader: func(path, cache string) (*bundle.Bundle, error) {
+			called = true
+			if path != "/mnt/airgap.tar" {
+				t.Fatalf("unexpected bundle path %s", path)
+			}
+			if cache == "" {
+				t.Fatalf("expected cache directory")
+			}
+			return &bundle.Bundle{Manifest: bundle.Manifest{Version: "1.0.0"}}, nil
+		},
+		Bootstrapper:     &fakeBootstrap{},
+		HelmInstaller:    &fakeHelm{},
+		TelemetryEmitter: telemetryStub,
+	}
+
+	opts := clustercmd.InstallOptions{
+		Bootstrap:        true,
+		ValuesFile:       "/tmp/values.enc",
+		ValuesPassphrase: "secret",
+		Airgapped:        true,
+		BundlePath:       "/mnt/airgap.tar",
+		Output:           "text",
+	}
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	if err := clustercmd.RunInstallForTest(cmd, opts, deps); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+	if !called {
+		t.Fatalf("expected bundle loader to be invoked")
+	}
+}
+
+func TestClusterInstallCommand_LoadClusterConfigError(t *testing.T) {
+	deps := clustercmd.InstallDeps{
+		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		BundleLoader:     func(string, string) (*bundle.Bundle, error) { return nil, nil },
+		Bootstrapper:     &fakeBootstrap{},
+		HelmInstaller:    &fakeHelm{},
+		TelemetryEmitter: telemetryStub,
+	}
+
+	// Ensure default loader runs and fails by pointing kubeconfig to a missing file.
+	original := os.Getenv("KUBECONFIG")
+	missing := filepath.Join(t.TempDir(), "missing-kubeconfig")
+	os.Setenv("KUBECONFIG", missing)
+	defer os.Setenv("KUBECONFIG", original)
+
+	opts := clustercmd.InstallOptions{
+		Bootstrap:        false,
+		ClusterEndpoint:  "https://cluster.local",
+		ValuesFile:       "/tmp/values.enc",
+		ValuesPassphrase: "secret",
+		Output:           "text",
+	}
+
+	err := clustercmd.RunInstallForTest(&cobra.Command{}, opts, deps)
+	if err == nil || !strings.Contains(err.Error(), "load cluster config") {
+		t.Fatalf("expected cluster config error, got %v", err)
 	}
 }

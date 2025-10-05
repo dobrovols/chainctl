@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/dobrovols/chainctl/internal/config"
@@ -82,5 +83,36 @@ func TestValidateProfileReuseSuccess(t *testing.T) {
 	}
 	if profile.HelmRelease != "custom" {
 		t.Fatalf("expected custom helm release, got %s", profile.HelmRelease)
+	}
+}
+
+func TestErrEncryptedFileRequiredExposed(t *testing.T) {
+	if config.ErrEncryptedFileRequired() == nil {
+		t.Fatalf("expected non-nil error sentinel")
+	}
+}
+
+func TestProfileStringMasksPassphrase(t *testing.T) {
+	profile := &config.Profile{
+		Mode:            config.ModeBootstrap,
+		ClusterEndpoint: "https://cluster.local",
+		Airgapped:       true,
+		BundlePath:      "/mnt/bundle",
+		EncryptedFile:   "/tmp/values.enc",
+		Passphrase:      "secret",
+	}
+
+	summary := profile.String()
+	if strings.Contains(summary, "secret") {
+		t.Fatalf("expected passphrase to be masked, got %s", summary)
+	}
+	if !strings.Contains(summary, "passphrase=******") {
+		t.Fatalf("expected masked token in summary, got %s", summary)
+	}
+
+	profile.Passphrase = ""
+	summary = profile.String()
+	if !strings.Contains(summary, "passphrase=<none>") {
+		t.Fatalf("expected <none> marker when passphrase empty, got %s", summary)
 	}
 }

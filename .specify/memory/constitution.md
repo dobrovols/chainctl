@@ -1,11 +1,12 @@
 <!--
 Sync Impact Report
-Version change: N/A → 1.0.0
-Modified principles: none
-Added sections: Core Principles, Operational Guardrails, Delivery Workflow, Governance
+Version change: 1.0.0 → 1.1.0
+Modified principles: P2. Test Rigor for Cluster Confidence → P2. Test Rigor for Cluster Confidence
+Added sections: none
 Removed sections: none
 Templates requiring updates:
   ✅ .specify/templates/plan-template.md
+  ✅ .specify/templates/spec-template.md
   ✅ .specify/templates/tasks-template.md
 Follow-up TODOs: none
 -->
@@ -25,6 +26,7 @@ Rationale: Maintainable, reviewable Go code keeps the CLI reliable during rapid 
 - Integration tests MUST exercise Kubernetes interactions with envtest or kind; they MAY mock cloud providers but MUST cover kubectl-equivalent flows.
 - End-to-end smoke tests MUST validate that installations succeed, rerun idempotently, and rollback safely on failure.
 - No merge is allowed if test coverage for touched packages drops or any new logic lacks deterministic tests.
+- Each Go module/package MUST maintain >=80% unit test coverage; coverage dips block merges until remediated.
 Rationale: High-fidelity tests are the only safe way to ship cluster-changing installers.
 
 ### P3. Consistent Operator UX
@@ -66,4 +68,4 @@ Rationale: Safe observability allows operators to diagnose and recover from fail
 - The maintainers chair schedules quarterly compliance reviews; findings feed backlog items within one sprint.
 - Emergency deviations MUST be documented in the affected PR and resolved before the next release branch is cut.
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-05 | **Last Amended**: 2025-10-05
+**Version**: 1.1.0 | **Ratified**: 2025-10-05 | **Last Amended**: 2025-10-05
