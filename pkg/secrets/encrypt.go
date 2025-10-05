@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 
 	"golang.org/x/crypto/scrypt"
 )
@@ -76,8 +75,6 @@ func EncryptFile(opts EncryptOptions) (*EncryptResult, error) {
 		return nil, NewError(ErrCodeEncryption, fmt.Errorf("derive key: %w", err))
 	}
 	defer zeroBytes(key)
-	// Prevent compiler optimization from removing zeroing
-	runtime.KeepAlive(passBytes)
 	zeroBytes(passBytes)
 
 	block, err := aes.NewCipher(key)

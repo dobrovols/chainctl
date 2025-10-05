@@ -110,7 +110,7 @@ func splitLines(s string) []string {
 	return lines
 }
 
-// HasKernelModule always returns true until kernel module inspection is implemented.
+// TODO: HasKernelModule always returns true until kernel module inspection is implemented.
 func (DefaultInspector) HasKernelModule(string) bool { return true }
 
 // HasSudoPrivileges checks if running as root.
