@@ -90,8 +90,8 @@ func (defaultRunner) Run(cmd []string, env map[string]string) error {
 	}
 	command := exec.CommandContext(context.Background(), cmd[0], cmd[1:]...)
 	command.Env = append(command.Env, envMap(env)...)
-	command.Stdout = nil
-	command.Stderr = nil
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
 	return command.Run()
 }
 

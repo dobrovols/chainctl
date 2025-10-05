@@ -238,7 +238,8 @@ func loadClusterConfig(profile *config.Profile) (*rest.Config, error) {
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
 	cfg, err := clientConfig.ClientConfig()
 	if err != nil {
-		return nil, err
+		kubeconfigPath := loadingRules.GetDefaultFilename()
+		return nil, fmt.Errorf("failed to load kubeconfig from %q: %w", kubeconfigPath, err)
 	}
 	return cfg, nil
 }
