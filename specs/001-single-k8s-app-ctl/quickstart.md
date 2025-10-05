@@ -6,6 +6,12 @@
 - Encrypted values file created with `chainctl encrypt-values` (passphrase available).
 - Removable-media tarball mounted at `/opt/chainctl/bundles/<version>` when offline.
 - (Optional) OpenTelemetry exporter configured via `CHAINCTL_OTEL_EXPORTER=stdout|otlp-grpc|otlp-http`.
+- Set secure bootstrap source:
+  ```bash
+  export CHAINCTL_K3S_INSTALL_URL="https://raw.githubusercontent.com/k3s-io/k3s/v1.30.2%2Bk3s1/install.sh"
+  export CHAINCTL_K3S_INSTALL_SHA256="<sha256-of-install-script>"
+  ```
+  Alternatively, point `CHAINCTL_K3S_INSTALL_PATH` to a local script and set `CHAINCTL_K3S_INSTALL_SHA256`.
 
 ## Bootstrap & Install (Air-gapped)
 1. Mount the bundle:

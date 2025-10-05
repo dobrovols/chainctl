@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -47,7 +49,31 @@ func (o *Orchestrator) Bootstrap(profile *config.Profile) error {
 		"INSTALL_K3S_CHANNEL": profile.K3sVersion,
 		"INSTALL_K3S_EXEC":    "server --write-kubeconfig-mode=644 --disable traefik",
 	}
-	cmd := []string{"sh", "-c", "curl -sfL https://get.k3s.io | sh -"}
+
+	scriptSHA := os.Getenv("CHAINCTL_K3S_INSTALL_SHA256")
+	if scriptSHA == "" {
+		return errors.New("CHAINCTL_K3S_INSTALL_SHA256 must be set for secure k3s bootstrap")
+	}
+
+    if scriptPath := os.Getenv("CHAINCTL_K3S_INSTALL_PATH"); scriptPath != "" {
+        if _, err := os.Stat(scriptPath); err != nil {
+            return fmt.Errorf("invalid CHAINCTL_K3S_INSTALL_PATH: %w", err)
+        }
+        command := fmt.Sprintf("set -euo pipefail; printf '%%s  %%s\\n' '%s' '%s' | sha256sum -c -; sh '%s'", scriptSHA, scriptPath, scriptPath)
+        cmd := []string{"sh", "-c", command}
+        if err := o.runner.Run(cmd, env); err != nil {
+            return err
+        }
+        return o.waiter.Wait(o.timeout)
+    }
+
+	scriptURL := os.Getenv("CHAINCTL_K3S_INSTALL_URL")
+	if scriptURL == "" {
+		return errors.New("set CHAINCTL_K3S_INSTALL_URL or CHAINCTL_K3S_INSTALL_PATH")
+	}
+
+    command := fmt.Sprintf("set -euo pipefail; tmp=$(mktemp); trap 'rm -f $tmp' EXIT; curl -sfL '%s' -o \"$tmp\"; printf '%%s  %%s\\n' '%s' \"$tmp\" | sha256sum -c -; sh \"$tmp\"", scriptURL, scriptSHA)
+    cmd := []string{"sh", "-c", command}
 
 	if err := o.runner.Run(cmd, env); err != nil {
 		return err

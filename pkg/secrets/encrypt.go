@@ -76,6 +76,8 @@ func EncryptFile(opts EncryptOptions) (*EncryptResult, error) {
 	}
 	defer zeroBytes(key)
 	zeroBytes(passBytes)
+	// Prevent compiler optimization from removing zeroing
+	runtime.KeepAlive(passBytes)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {

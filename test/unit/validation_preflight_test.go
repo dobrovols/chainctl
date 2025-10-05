@@ -60,7 +60,23 @@ func TestValidateHostFailureAggregatesIssues(t *testing.T) {
 		t.Fatalf("expected validation to fail")
 	}
 
-	if len(result.Issues) < 4 {
-		t.Fatalf("expected multiple issues, got %v", result.Issues)
+	expectedIssues := []string{
+		"require >= 4 cpu cores, detected 2",
+		"require >= 8 GiB memory, detected 4 GiB",
+		"missing kernel module br_netfilter",
+		"requires sudo privileges",
+		"path missing: /nonexistent",
+	}
+	for _, expected := range expectedIssues {
+		found := false
+		for _, actual := range result.Issues {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected issue %q not found in actual issues: %v", expected, result.Issues)
+		}
 	}
 }

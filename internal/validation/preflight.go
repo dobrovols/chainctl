@@ -82,10 +82,38 @@ type DefaultInspector struct{}
 // CPUCount returns logical CPUs.
 func (DefaultInspector) CPUCount() int { return runtime.NumCPU() }
 
-// MemoryGiB returns available memory (best-effort, currently stubbed).
+// MemoryGiB returns available memory in GiB.
 func (DefaultInspector) MemoryGiB() int {
-	// Placeholder until real implementation uses sysinfo.
-	return 32
+	// Linux implementation: read from /proc/meminfo
+	if runtime.GOOS == "linux" {
+		data, err := os.ReadFile("/proc/meminfo")
+		if err == nil {
+			var memTotalKB int
+			for _, line := range splitLines(string(data)) {
+				if n, _ := fmt.Sscanf(line, "MemTotal: %d kB", &memTotalKB); n == 1 {
+					return memTotalKB / 1024 / 1024 // Convert kB to GiB
+				}
+			}
+		}
+	}
+	// Fallback: return 0 if unable to detect
+	return 0
+}
+
+// splitLines splits a string into lines.
+func splitLines(s string) []string {
+	lines := []string{}
+	start := 0
+	for i := range s {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
 }
 
 // HasKernelModule always returns true until kernel module inspection is implemented.

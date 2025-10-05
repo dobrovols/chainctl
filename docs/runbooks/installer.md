@@ -4,6 +4,13 @@
 Guide operators through installing, upgrading, and troubleshooting the chainctl-managed application on k3s clusters.
 
 ## Quick Commands
+- Set installer script source before bootstrap:
+  ```bash
+  export CHAINCTL_K3S_INSTALL_URL="https://raw.githubusercontent.com/k3s-io/k3s/v1.30.2%2Bk3s1/install.sh"
+  export CHAINCTL_K3S_INSTALL_SHA256="<sha256>"
+  ```
+  *or* point `CHAINCTL_K3S_INSTALL_PATH` to a pre-downloaded script and set the corresponding SHA256.
+
 - Bootstrap + install (online):
   ```bash
   chainctl cluster install --bootstrap \

@@ -2,6 +2,7 @@ package unit
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,9 @@ func (f *fakeWaiter) Wait(timeout time.Duration) error {
 }
 
 func TestBootstrapExecutesInstaller(t *testing.T) {
+	t.Setenv("CHAINCTL_K3S_INSTALL_URL", "https://example.com/install.sh")
+	t.Setenv("CHAINCTL_K3S_INSTALL_SHA256", "deadbeefcafebabe")
+
 	runner := &fakeRunner{}
 	waiter := &fakeWaiter{}
 	orch := bootstrap.NewOrchestrator(runner, waiter)
@@ -43,6 +47,9 @@ func TestBootstrapExecutesInstaller(t *testing.T) {
 
 	if len(runner.cmd) == 0 {
 		t.Fatalf("expected runner to be invoked")
+	}
+	if !strings.Contains(runner.cmd[2], "sha256sum -c -") {
+		t.Fatalf("expected checksum verification in command, got %s", runner.cmd[2])
 	}
 	if _, ok := runner.env["INSTALL_K3S_CHANNEL"]; !ok {
 		t.Fatalf("expected INSTALL_K3S_CHANNEL env to be set")
@@ -71,6 +78,9 @@ func TestBootstrapSkipsWhenReuseMode(t *testing.T) {
 }
 
 func TestBootstrapPropagatesRunnerError(t *testing.T) {
+	t.Setenv("CHAINCTL_K3S_INSTALL_URL", "https://example.com/install.sh")
+	t.Setenv("CHAINCTL_K3S_INSTALL_SHA256", "deadbeefcafebabe")
+
 	wantErr := errors.New("exec failed")
 	runner := &fakeRunner{err: wantErr}
 	waiter := &fakeWaiter{}
@@ -84,6 +94,9 @@ func TestBootstrapPropagatesRunnerError(t *testing.T) {
 }
 
 func TestBootstrapPropagatesWaitError(t *testing.T) {
+	t.Setenv("CHAINCTL_K3S_INSTALL_URL", "https://example.com/install.sh")
+	t.Setenv("CHAINCTL_K3S_INSTALL_SHA256", "deadbeefcafebabe")
+
 	wantErr := errors.New("not ready")
 	runner := &fakeRunner{}
 	waiter := &fakeWaiter{err: wantErr}
@@ -93,5 +106,24 @@ func TestBootstrapPropagatesWaitError(t *testing.T) {
 	err := orch.Bootstrap(profile)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected waiter error, got %v", err)
+	}
+}
+
+func TestBootstrapRequiresSHA(t *testing.T) {
+	orch := bootstrap.NewOrchestrator(&fakeRunner{}, &fakeWaiter{})
+	err := orch.Bootstrap(&config.Profile{Mode: config.ModeBootstrap})
+	if err == nil {
+		t.Fatalf("expected error when SHA not provided")
+	}
+}
+
+func TestBootstrapLocalScriptPathValidation(t *testing.T) {
+	t.Setenv("CHAINCTL_K3S_INSTALL_PATH", "/tmp/missing-install.sh")
+	t.Setenv("CHAINCTL_K3S_INSTALL_SHA256", "deadbeefcafebabe")
+
+	orch := bootstrap.NewOrchestrator(&fakeRunner{}, &fakeWaiter{})
+	err := orch.Bootstrap(&config.Profile{Mode: config.ModeBootstrap})
+	if err == nil {
+		t.Fatalf("expected error for invalid local path")
 	}
 }

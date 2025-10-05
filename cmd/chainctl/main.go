@@ -18,7 +18,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to initialize telemetry: %v\n", err)
 	}
 	if shutdown != nil {
-		defer shutdown(context.Background())
+		cleanupCtx, cancel := context.WithTimeout(ctx, telemetryinit.ShutdownTimeout)
+		defer func() {
+			defer cancel()
+			shutdown(cleanupCtx)
+		}()
 	}
 
 	cmd := cli.NewRootCommand()
