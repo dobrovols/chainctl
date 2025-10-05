@@ -30,10 +30,10 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-Deliver a Go 1.22 single binary `chainctl` that can bootstrap or reuse k3s clusters on Ubuntu/RHEL, install and upgrade the Helm-based micro-services stack, orchestrate k3s upgrades via system-upgrade-controller, operate with removable-media air-gapped bundles, and manage node joins through scoped tokens while enforcing encrypted configuration inputs and observability budgets.
+Deliver a Go 1.24 single binary `chainctl` that can bootstrap or reuse k3s clusters on Ubuntu/RHEL, install and upgrade the Helm-based micro-services stack, orchestrate k3s upgrades via system-upgrade-controller, operate with removable-media air-gapped bundles, and manage node joins through scoped tokens while enforcing encrypted configuration inputs and observability budgets.
 
 ## Technical Context
-**Language/Version**: Go 1.22 (gofmt + gofumpt enforced)  
+**Language/Version**: Go 1.24 (gofmt + gofumpt enforced)  
 **Primary Dependencies**: Cobra CLI, Helm SDK, k3s install scripts, system-upgrade-controller CRDs, OpenTelemetry SDK  
 **Storage**: local-path StorageClass (k3s default), filesystem bundle mount under `/opt/chainctl/bundles`  
 **Testing**: `go test`, `ginkgo`, controller-runtime envtest, kind-based e2e smoke suites  
@@ -120,7 +120,7 @@ test/
 1. Data shapes for installation profiles, bundle manifests, tokens, upgrade plans, and telemetry envelopes defined in `data-model.md` to anchor Go struct design and validation rules.
 2. CLI command contracts authored for install, app upgrade, cluster upgrade, node join, token create, and encrypt-values flows, capturing flags, outputs, exit codes, and observability expectations.
 3. Quickstart walkthrough documents bootstrap, upgrade, node join, and cluster upgrade scenarios for both online and air-gapped environments.
-4. `.specify/scripts/bash/update-agent-context.sh codex` executed to refresh shared agent guidance with new technologies (Go 1.22, Helm SDK, system-upgrade-controller, OpenTelemetry, envtest, kind).
+4. `.specify/scripts/bash/update-agent-context.sh codex` executed to refresh shared agent guidance with new technologies (Go 1.24, Helm SDK, system-upgrade-controller, OpenTelemetry, envtest, kind).
 
 **Outputs**:
 - `/Users/dobrovolsky/sources/golang/chainctl/specs/001-single-k8s-app-ctl/data-model.md`
@@ -157,4 +157,3 @@ test/
 - [ ] Phase 3: Tasks generated (/tasks command)
 - [ ] Phase 4: Implementation complete
 - [ ] Phase 5: Validation passed
-

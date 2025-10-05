@@ -2,6 +2,13 @@ GO ?= go
 GOCACHE ?= $(CURDIR)/.gocache
 GOFLAGS ?=
 
+GO_BIN_DIR := $(strip $(shell $(GO) env GOBIN))
+ifeq ($(GO_BIN_DIR),)
+GO_BIN_DIR := $(strip $(shell $(GO) env GOPATH))/bin
+endif
+GOFUMPT := $(GO_BIN_DIR)/gofumpt
+GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
+
 PACKAGES = ./...
 FMT_DIRS = cmd internal pkg test
 
@@ -10,19 +17,19 @@ FMT_DIRS = cmd internal pkg test
 fmt:
 	@echo "==> Running go fmt"
 	@GOCACHE=$(GOCACHE) $(GO) fmt ./...
-	@if command -v gofumpt >/dev/null 2>&1; then \
+	@if [ -x "$(GOFUMPT)" ]; then \
 		echo "==> Running gofumpt"; \
-		gofumpt -w $(FMT_DIRS); \
+		"$(GOFUMPT)" -w $(FMT_DIRS); \
 	else \
-		echo "WARN: gofumpt not installed; install via '$(GO) install mvdan.cc/gofumpt@latest'"; \
+		echo "WARN: gofumpt not installed; install via '$(GO) install mvdan.cc/gofumpt@v0.6.0'"; \
 	fi
 
 lint:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
+	@if [ -x "$(GOLANGCI_LINT)" ]; then \
 		echo "==> Running golangci-lint"; \
-		GOCACHE=$(GOCACHE) golangci-lint run ./...; \
+		GOCACHE=$(GOCACHE) "$(GOLANGCI_LINT)" run --timeout=5m ./...; \
 	else \
-		echo "WARN: golangci-lint not installed; install via '$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest'"; \
+		echo "WARN: golangci-lint not installed; install via '$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2'"; \
 	fi
 
 TEST_FLAGS ?=

@@ -1,9 +1,9 @@
 # chainctl Development Environment
 
-This project targets Go 1.22 and Linux hosts (Ubuntu 22.04+, RHEL 9+) for execution. Development requires the following:
+This project targets Go 1.24 and Linux hosts (Ubuntu 22.04+, RHEL 9+) for execution. Development requires the following:
 
 ## Tooling
-- Go 1.22 (install via `asdf` or `goenv` to match CI).
+- Go 1.24 (install via `asdf` or `goenv` to match CI).
 - Docker + KIND and/or k3s for integration/e2e testing.
 - `golangci-lint` and `gofumpt` (installed via `go install`).
 - Helm 3, kubectl, and system-upgrade-controller binaries pinned per constitution guardrails.
