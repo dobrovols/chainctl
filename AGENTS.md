@@ -26,7 +26,7 @@ test/                # unit, integration (envtest/kind), and e2e suites
 Go 1.24 (gofmt + gofumpt enforced): use wrapped errors, keep exported function docs concise, prefer context-aware operations, follow noun-verb CLI naming.
 
 ## Recent Changes
-- 002-oci-helm-state: Added Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`), existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry`
+- 002-oci-helm-state: Added CLI support for OCI chart references (`--chart oci://...`), mutually exclusive with `--bundle-path`; persisted state file with overrides (`--state-file`, `--state-file-name`). Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`) leveraged alongside existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry`.
 - 001-single-k8s-app-ctl: Added Go 1.24 (gofmt + gofumpt enforced) + Cobra CLI, Helm SDK, k3s install scripts, system-upgrade-controller CRDs, OpenTelemetry SDK
 
 <!-- MANUAL ADDITIONS START -->

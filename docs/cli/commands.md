@@ -21,7 +21,7 @@ chainctl app install \
   [--state-file-name app.json] \
   [--output json]
 ```
-- Exactly one of `--chart` (OCI reference) or `--bundle-path` (air-gapped assets) must be supplied.
+- Exactly one of `--chart` (OCI reference) or `--bundle-path` (air-gapped assets) must be supplied. `--state-file` and `--state-file-name` are mutually exclusive.
 - Namespace and release defaults are pulled from the profile; flags allow explicit overrides for multi-tenant clusters.
 - State is written to the XDG config directory (`$XDG_CONFIG_HOME/chainctl/state/app.json` by default) unless `--state-file` or `--state-file-name` are provided.
 - JSON output includes `status`, `action`, `release`, `namespace`, `chart`, `stateFile`, and `timestamp` fields.
@@ -42,7 +42,7 @@ chainctl app upgrade \
   [--output json]
 ```
 - Helm upgrade is driven through the resolver: OCI charts are pulled with digest capture; bundle mode reuses local assets.
-- CLI rejects conflicting sources, missing namespace overrides, and invalid state-file paths before contacting the cluster.
+- CLI rejects conflicting sources, invalid OCI references, and invalid state-file paths before contacting the cluster. Namespace can be supplied via flags or profile.
 - On success, state is persisted atomically (0600 file, 0700 directories) and the final path is echoed to the operator.
 - JSON output adds `action: "upgrade"` and reuses install fields for parity.
 
