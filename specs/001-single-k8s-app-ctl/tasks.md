@@ -16,7 +16,7 @@
 - [x] T001 Establish Go workspace structure: create `cmd/chainctl`, `pkg/{bootstrap,helm,upgrade,bundle,secrets,tokens,telemetry}`, `internal/{validation,config,kubeclient}`, and `test/{unit,integration,e2e}` with placeholder README.md files.
 - [x] T002 Configure tooling: update `go.mod`, add `tools.go` if needed, wire `Makefile` targets for `gofmt`, `gofumpt`, `golangci-lint`, `go test`, `go test -bench`, and add CI jobs.
 - [x] T003 [P] Vendor third-party assets: pin Helm SDK, controller-runtime/envtest, OpenTelemetry, Cobra; update `go.sum` via `go mod tidy`.
-- [x] T004 Document dev environment expectations in `docs/development/environment.md` (Go 1.22, asdf/goenv, bundle mount paths).
+- [x] T004 Document dev environment expectations in `docs/development/environment.md` (Go 1.24, asdf/goenv, bundle mount paths).
 
 ## Phase 3.2: Tests First (TDD)
 - [x] T005 [P] Write unit tests for bundle handling in `test/unit/bundle_tarball_test.go` covering checksum failures and manifest parsing.
