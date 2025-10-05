@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 
@@ -25,6 +26,32 @@ func (f *fakeHelmInstaller) Install(p *config.Profile, b *bundle.Bundle) error {
 
 func telemetryNoop(w io.Writer) *telemetry.Emitter {
 	return telemetry.NewEmitter(w)
+}
+
+func TestNewAppCommandRegistersUpgrade(t *testing.T) {
+	cmd := appcmd.NewAppCommand()
+	if cmd.Use != "app" {
+		t.Fatalf("expected use app, got %s", cmd.Use)
+	}
+	var found bool
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "upgrade" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected upgrade subcommand to be registered")
+	}
+}
+
+func TestNewUpgradeCommandFlags(t *testing.T) {
+	cmd := appcmd.NewUpgradeCommand()
+	for _, name := range []string{"cluster-endpoint", "values-file", "values-passphrase", "bundle-path", "airgapped", "output"} {
+		if cmd.Flag(name) == nil {
+			t.Fatalf("expected flag %s to exist", name)
+		}
+	}
 }
 
 func TestAppUpgradeCommand_TextSuccess(t *testing.T) {
@@ -98,5 +125,54 @@ func TestAppUpgradeCommand_ValidatesInputs(t *testing.T) {
 	err = appcmd.RunUpgradeForTest(&cobra.Command{}, opts, deps)
 	if err != appcmd.ErrClusterEndpointRequired() {
 		t.Fatalf("expected cluster endpoint error, got %v", err)
+	}
+}
+
+func TestAppUpgradeCommand_UnsupportedOutput(t *testing.T) {
+	deps := appcmd.UpgradeDeps{Installer: &fakeHelmInstaller{}, TelemetryEmitter: telemetryNoop}
+	opts := appcmd.UpgradeOptions{
+		ClusterEndpoint:  "https://cluster.local",
+		ValuesFile:       "/tmp/values.enc",
+		ValuesPassphrase: "secret",
+		Output:           "yaml",
+	}
+
+	err := appcmd.RunUpgradeForTest(&cobra.Command{}, opts, deps)
+	if !errors.Is(err, appcmd.ErrUnsupportedOutput()) {
+		t.Fatalf("expected unsupported output error, got %v", err)
+	}
+}
+
+func TestAppUpgradeCommand_AirgappedLoadsBundle(t *testing.T) {
+	var called bool
+	deps := appcmd.UpgradeDeps{
+		Installer:        &fakeHelmInstaller{},
+		TelemetryEmitter: telemetryNoop,
+		BundleLoader: func(path, cache string) (*bundle.Bundle, error) {
+			called = true
+			if path != "/mnt/package.tar" {
+				t.Fatalf("unexpected path %s", path)
+			}
+			if cache == "" {
+				t.Fatalf("expected cache directory")
+			}
+			return &bundle.Bundle{}, nil
+		},
+	}
+
+	opts := appcmd.UpgradeOptions{
+		ClusterEndpoint:  "https://cluster.local",
+		ValuesFile:       "/tmp/values.enc",
+		ValuesPassphrase: "secret",
+		BundlePath:       "/mnt/package.tar",
+		Airgapped:        true,
+		Output:           "text",
+	}
+
+	if err := appcmd.RunUpgradeForTest(&cobra.Command{}, opts, deps); err != nil {
+		t.Fatalf("upgrade failed: %v", err)
+	}
+	if !called {
+		t.Fatalf("expected bundle loader to be called")
 	}
 }

@@ -41,3 +41,10 @@ func TestHelmInstallerPropagatesError(t *testing.T) {
 		t.Fatalf("expected helm error, got %v", err)
 	}
 }
+
+func TestHelmInstallerUsesNoopExecutorWhenNil(t *testing.T) {
+	installer := helm.NewInstaller(nil)
+	if err := installer.Install(&config.Profile{}, &bundle.Bundle{}); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+}

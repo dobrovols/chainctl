@@ -19,6 +19,21 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+var (
+	stdoutTracerFactory = func() (sdktrace.SpanExporter, error) {
+		return stdouttrace.New(stdouttrace.WithPrettyPrint())
+	}
+	stdoutMeterFactory = func() (sdkmetric.Exporter, error) {
+		return stdoutmetric.New()
+	}
+	otlpGRPCFactory = func(ctx context.Context) (sdktrace.SpanExporter, error) {
+		return otlptrace.New(ctx, otlptracegrpc.NewClient())
+	}
+	otlpHTTPFactory = func(ctx context.Context) (sdktrace.SpanExporter, error) {
+		return otlptrace.New(ctx, otlptracehttp.NewClient())
+	}
+)
+
 const ShutdownTimeout = 5 * time.Second
 
 // InitProvider configures global OpenTelemetry providers based on environment variables.
@@ -28,23 +43,23 @@ func InitProvider(ctx context.Context) (func(context.Context) error, error) {
 	case "", "none":
 		return func(context.Context) error { return nil }, nil
 	case "stdout":
-		tracer, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		tracer, err := stdoutTracerFactory()
 		if err != nil {
 			return nil, err
 		}
-		meter, err := stdoutmetric.New()
+		meter, err := stdoutMeterFactory()
 		if err != nil {
 			return nil, err
 		}
 		return installProvider(ctx, tracer, meter)
 	case "otlp-grpc":
-		tracer, err := otlptrace.New(ctx, otlptracegrpc.NewClient())
+		tracer, err := otlpGRPCFactory(ctx)
 		if err != nil {
 			return nil, err
 		}
 		return installProvider(ctx, tracer, nil)
 	case "otlp-http":
-		tracer, err := otlptrace.New(ctx, otlptracehttp.NewClient())
+		tracer, err := otlpHTTPFactory(ctx)
 		if err != nil {
 			return nil, err
 		}

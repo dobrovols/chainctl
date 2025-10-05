@@ -11,9 +11,15 @@ import (
 	secreterrors "github.com/dobrovols/chainctl/pkg/secrets"
 )
 
+var (
+	telemetryInit = telemetryinit.InitProvider
+	rootCommand   = cli.NewRootCommand
+	osExit        = os.Exit
+)
+
 func main() {
 	ctx := context.Background()
-	shutdown, err := telemetryinit.InitProvider(ctx)
+	shutdown, err := telemetryInit(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize telemetry: %v\n", err)
 	}
@@ -27,13 +33,14 @@ func main() {
 		}()
 	}
 
-	cmd := cli.NewRootCommand()
+	cmd := rootCommand()
+	cmd.SetArgs(os.Args[1:])
 	if err := cmd.Execute(); err != nil {
 		var encErr *secreterrors.Error
 		if errors.As(err, &encErr) {
-			os.Exit(encErr.Code)
+			osExit(encErr.Code)
 		}
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		osExit(1)
 	}
 }

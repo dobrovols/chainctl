@@ -144,6 +144,36 @@ func TestEncryptValuesCommand_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestEncryptValuesCommand_UnsupportedFormat(t *testing.T) {
+	tempDir := t.TempDir()
+	input := filepath.Join(tempDir, "values.yaml")
+	output := filepath.Join(tempDir, "values.enc")
+
+	if err := os.WriteFile(input, []byte("key: value\n"), 0o600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	root := chainctlcmd.NewRootCommand()
+	root.SetOut(new(bytes.Buffer))
+	root.SetErr(new(bytes.Buffer))
+	root.SetArgs([]string{
+		"encrypt-values",
+		"--input", input,
+		"--output", output,
+		"--passphrase", "pa55word!",
+		"--format", "yaml",
+	})
+
+	err := root.Execute()
+	var se *secreterrors.Error
+	if !errors.As(err, &se) {
+		t.Fatalf("expected secrets.Error, got %v", err)
+	}
+	if se.Code != secreterrors.ErrCodeValidation {
+		t.Fatalf("expected validation code, got %d", se.Code)
+	}
+}
+
 func extractChecksum(raw []byte) string {
 	var out struct {
 		Checksum string `json:"checksum"`
