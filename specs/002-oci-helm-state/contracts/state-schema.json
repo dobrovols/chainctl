@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChainCTL Application State",
+  "type": "object",
+  "required": ["release", "namespace", "chart", "version", "lastAction", "timestamp"],
+  "properties": {
+    "release": {
+      "type": "string",
+      "minLength": 1
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chart": {
+      "type": "object",
+      "required": ["type", "reference"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["oci", "bundle"]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "string"
+    },
+    "lastAction": {
+      "type": "string",
+      "enum": ["install", "update"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "clusterEndpoint": {
+      "type": "string"
+    },
+    "stateFile": {
+      "type": "string",
+      "description": "Absolute path to persisted file"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,12 @@
+{
+  "release": "myapp-demo",
+  "namespace": "demo",
+  "chart": {
+    "type": "bundle",
+    "reference": "/var/tmp/myapp-bundle"
+  },
+  "version": "1.2.2",
+  "lastAction": "upgrade",
+  "timestamp": "2025-10-05T11:59:42Z",
+  "clusterEndpoint": "https://cluster.local"
+}
