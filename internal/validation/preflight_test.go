@@ -1,4 +1,4 @@
-package unit
+package validation_test
 
 import (
 	"testing"

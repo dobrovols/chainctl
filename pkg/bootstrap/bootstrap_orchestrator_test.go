@@ -1,4 +1,4 @@
-package unit
+package bootstrap_test
 
 import (
 	"errors"

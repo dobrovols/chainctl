@@ -1,4 +1,4 @@
-package unit
+package bundle_test
 
 import (
 	"archive/tar"
