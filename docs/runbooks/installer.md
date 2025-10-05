@@ -69,7 +69,7 @@ Guide operators through installing, upgrading, and troubleshooting the chainctl-
 ## Troubleshooting
 | Symptom | Cause | Resolution |
 |---------|-------|------------|
-| `state file could not be written` after success output | Directory read-only or conflicting overrides | Ensure parent directory is writable, remove conflicting `--state-file`/`--state-file-name`, then rerun command |
+| `state file could not be written` after success output | Directory read-only or conflicting overrides | Ensure parent directory is writable, remove conflicting `--state-file`/`--state-file-name`, then rerun command. Deployment remains applied. |
 | `exactly one of --chart or --bundle-path must be provided` | Mutually exclusive inputs specified | Drop one flag; OCI has precedence only when explicitly requested |
 | Helm upgrade rollback triggered | Application deployment unhealthy | Inspect Helm release history (`helm status <release>`), verify state record for last action and chart reference |
 | System-upgrade plan missing | CRD not installed | Verify controller CRDs via `kubectl get crd plans.upgrade.cattle.io` |

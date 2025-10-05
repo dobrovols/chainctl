@@ -1,9 +1,11 @@
 name: SonarCloud
 
 on:
-  pull_request:
+  push:
     branches:
-      - '**'
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   scan:
@@ -24,8 +26,8 @@ jobs:
           mkdir -p .cache/go-build
           GOCACHE=$(pwd)/.cache/go-build go test ./... -covermode=atomic -coverprofile=coverage.out
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@1f97601f8c23bba7b7e91f1d19f78cb0373657a6 # v2.4.1
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:

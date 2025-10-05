@@ -4,7 +4,7 @@ chainctl is a single-binary Go CLI for installing, upgrading, and operating a Ku
 
 ## Features
 - **Cluster lifecycle**: `chainctl cluster install` bootstraps new k3s clusters or validates existing ones, performing host and cluster preflight checks.
-- **Application upgrades**: `chainctl app upgrade` applies Helm releases with structured telemetry and JSON reporting.
+- **Application upgrades**: `chainctl app upgrade` applies Helm releases with structured telemetry and JSON reporting. Supports OCI-hosted Helm charts via `--chart oci://...` and persists execution state to a local JSON file.
 - **Cluster upgrades**: `chainctl cluster upgrade` ensures the system-upgrade-controller stack and submits upgrade plans with rollback awareness.
 - **Node onboarding**: `chainctl node token` / `chainctl node join` manage scoped pre-shared tokens for multi-node scaling.
 - **Air-gapped ready**: Installer reads bundles from removable media tarballs with checksum validation.
@@ -29,14 +29,33 @@ chainctl cluster install \
   --values-passphrase "$CHAINCTL_VALUES_PASSPHRASE"
 ```
 
-Application upgrade with JSON output:
+App install (OCI chart) with state persistence:
+```bash
+chainctl app install \
+  --values-file values.enc \
+  --values-passphrase "$CHAINCTL_VALUES_PASSPHRASE" \
+  --chart oci://registry.example.com/apps/myapp:1.2.3 \
+  --namespace demo \
+  --release-name myapp-demo \
+  --state-file-name app.json \
+  --output json
+```
+
+Application upgrade with JSON output (OCI chart + state persistence):
 ```bash
 chainctl app upgrade \
   --cluster-endpoint https://cluster.local \
   --values-file values.enc \
   --values-passphrase "$CHAINCTL_VALUES_PASSPHRASE" \
+  --chart oci://registry.example.com/apps/myapp:1.2.4 \
+  --namespace demo \
+  --release-name myapp-demo \
+  --app-version 1.2.4 \
+  --state-file-name app.json \
   --output json
 ```
+
+State file defaults to `$XDG_CONFIG_HOME/chainctl/state/app.json` (or `$HOME/.chainctl/state/app.json`). Override with `--state-file` (absolute path) or `--state-file-name` (filename within managed directory). On failures to write state, the deployment remains and the CLI reports the error.
 
 ## Telemetry
 Configure OpenTelemetry exporters via `CHAINCTL_OTEL_EXPORTER=stdout|otlp-grpc|otlp-http`. Instance IDs are hashed using `CHAINCTL_CLUSTER_ID` (defaults to hostname). Sample payloads live in [`docs/telemetry/chainctl_samples.json`](docs/telemetry/chainctl_samples.json).
