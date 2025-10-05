@@ -109,77 +109,13 @@ func Load(tarballPath, cacheRoot string) (*Bundle, error) {
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create bundle cache: %w", err)
 	}
-
-	tr := tar.NewReader(bytes.NewReader(data))
-	var manifestBytes []byte
-
-	for {
-		hdr, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read tar entry: %w", err)
-		}
-
-		if hdr.Typeflag == tar.TypeDir {
-			targetDir, err := safeJoin(extractDir, hdr.Name)
-			if err != nil {
-				return nil, err
-			}
-			if err := os.MkdirAll(targetDir, os.FileMode(hdr.Mode)); err != nil {
-				return nil, fmt.Errorf("create dir %s: %w", hdr.Name, err)
-			}
-			continue
-		}
-
-		targetPath, err := safeJoin(extractDir, hdr.Name)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-			return nil, fmt.Errorf("create parent dir for %s: %w", hdr.Name, err)
-		}
-
-		buf := new(bytes.Buffer)
-		if _, err := io.Copy(buf, tr); err != nil {
-			return nil, fmt.Errorf("copy tar entry %s: %w", hdr.Name, err)
-		}
-
-		if hdr.Name == "bundle.yaml" {
-			manifestBytes = buf.Bytes()
-			continue
-		}
-
-		if err := os.WriteFile(targetPath, buf.Bytes(), os.FileMode(hdr.Mode)); err != nil {
-			return nil, fmt.Errorf("write file %s: %w", hdr.Name, err)
-		}
-	}
-
-	if manifestBytes == nil {
-		return nil, ErrManifestMissing
-	}
-
-	manifest, err := unmarshalManifest(manifestBytes)
+	manifest, err := extractTarToDir(data, extractDir)
 	if err != nil {
-		return nil, fmt.Errorf("parse manifest: %w", err)
+		return nil, err
 	}
 
-	for rel, expected := range manifest.Checksums {
-		abs, err := safeJoin(extractDir, rel)
-		if err != nil {
-			return nil, err
-		}
-		data, err := os.ReadFile(abs)
-		if err != nil {
-			return nil, fmt.Errorf("read asset %s: %w", rel, err)
-		}
-		sum := sha256.Sum256(data)
-		actual := hex.EncodeToString(sum[:])
-		if !strings.EqualFold(actual, expected) {
-			return nil, fmt.Errorf("%w: %s", ErrChecksumMismatch, rel)
-		}
+	if err := validateChecksums(extractDir, manifest.Checksums); err != nil {
+		return nil, err
 	}
 
 	return &Bundle{
@@ -188,6 +124,87 @@ func Load(tarballPath, cacheRoot string) (*Bundle, error) {
 		Extracted: extractDir,
 		Manifest:  manifest,
 	}, nil
+}
+
+// extractTarToDir extracts a tar archive byte slice into extractDir and returns the parsed manifest.
+func extractTarToDir(data []byte, extractDir string) (Manifest, error) {
+	tr := tar.NewReader(bytes.NewReader(data))
+	var manifestBytes []byte
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return Manifest{}, fmt.Errorf("read tar entry: %w", err)
+		}
+		if err := extractEntry(tr, hdr, extractDir, &manifestBytes); err != nil {
+			return Manifest{}, err
+		}
+	}
+	if manifestBytes == nil {
+		return Manifest{}, ErrManifestMissing
+	}
+	m, err := unmarshalManifest(manifestBytes)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("parse manifest: %w", err)
+	}
+	return m, nil
+}
+
+// extractEntry handles a single tar header extraction and updates manifestBytes when the manifest is encountered.
+func extractEntry(tr *tar.Reader, hdr *tar.Header, root string, manifestBytes *[]byte) error {
+	switch hdr.Typeflag {
+	case tar.TypeDir:
+		targetDir, err := safeJoin(root, hdr.Name)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(targetDir, os.FileMode(hdr.Mode)); err != nil {
+			return fmt.Errorf("create dir %s: %w", hdr.Name, err)
+		}
+		return nil
+	default:
+		targetPath, err := safeJoin(root, hdr.Name)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return fmt.Errorf("create parent dir for %s: %w", hdr.Name, err)
+		}
+		buf := new(bytes.Buffer)
+		if _, err := io.Copy(buf, tr); err != nil {
+			return fmt.Errorf("copy tar entry %s: %w", hdr.Name, err)
+		}
+		if hdr.Name == "bundle.yaml" {
+			*manifestBytes = buf.Bytes()
+			return nil
+		}
+		if err := os.WriteFile(targetPath, buf.Bytes(), os.FileMode(hdr.Mode)); err != nil {
+			return fmt.Errorf("write file %s: %w", hdr.Name, err)
+		}
+		return nil
+	}
+}
+
+// validateChecksums verifies that files listed in checksums map match their sha256 sums.
+func validateChecksums(root string, checksums map[string]string) error {
+	for rel, expected := range checksums {
+		abs, err := safeJoin(root, rel)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			return fmt.Errorf("read asset %s: %w", rel, err)
+		}
+		sum := sha256.Sum256(data)
+		actual := hex.EncodeToString(sum[:])
+		if !strings.EqualFold(actual, expected) {
+			return fmt.Errorf("%w: %s", ErrChecksumMismatch, rel)
+		}
+	}
+	return nil
 }
 
 func safeJoin(root, name string) (string, error) {
