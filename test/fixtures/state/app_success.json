@@ -1,0 +1,13 @@
+{
+  "release": "myapp-demo",
+  "namespace": "demo",
+  "chart": {
+    "type": "oci",
+    "reference": "oci://registry.example.com/apps/myapp:1.2.3",
+    "digest": "sha256:abc123"
+  },
+  "version": "1.2.3",
+  "lastAction": "upgrade",
+  "timestamp": "2025-10-05T12:34:56Z",
+  "clusterEndpoint": "https://cluster.local"
+}

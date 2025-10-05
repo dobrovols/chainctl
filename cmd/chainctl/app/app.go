@@ -9,6 +9,7 @@ func NewAppCommand() *cobra.Command {
 		Short: "Manage application lifecycle operations",
 	}
 
+	cmd.AddCommand(NewInstallCommand())
 	cmd.AddCommand(NewUpgradeCommand())
 
 	return cmd

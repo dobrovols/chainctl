@@ -4,6 +4,8 @@ Auto-generated from all feature plans. Last updated: 2025-10-05
 
 ## Active Technologies
 - Go 1.24 (gofmt + gofumpt enforced) + Cobra CLI, Helm SDK, k3s install scripts, system-upgrade-controller CRDs, OpenTelemetry SDK (001-single-k8s-app-ctl)
+- Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`), existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry` (002-oci-helm-state)
+- Local filesystem JSON state file under user config directory (002-oci-helm-state)
 
 ## Project Structure
 ```
@@ -24,6 +26,7 @@ test/                # unit, integration (envtest/kind), and e2e suites
 Go 1.24 (gofmt + gofumpt enforced): use wrapped errors, keep exported function docs concise, prefer context-aware operations, follow noun-verb CLI naming.
 
 ## Recent Changes
+- 002-oci-helm-state: Added Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`), existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry`
 - 001-single-k8s-app-ctl: Added Go 1.24 (gofmt + gofumpt enforced) + Cobra CLI, Helm SDK, k3s install scripts, system-upgrade-controller CRDs, OpenTelemetry SDK
 
 <!-- MANUAL ADDITIONS START -->
