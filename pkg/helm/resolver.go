@@ -110,11 +110,15 @@ func (r *Resolver) resolveBundle(_ context.Context, opts ResolveOptions) (Resolv
 		return ResolveResult{}, errResolverBundleLoaderMissing
 	}
 	cacheRoot := opts.BundleCacheDir
+	bundlePath := strings.TrimSpace(opts.BundlePath)
+	if bundlePath == "" {
+		return ResolveResult{}, errors.New("bundle path must not be empty")
+	}
 	if strings.TrimSpace(cacheRoot) == "" {
-		cacheRoot = filepath.Dir(opts.BundlePath)
+		cacheRoot = filepath.Dir(bundlePath)
 	}
 
-	tb, err := r.bundleLoader(opts.BundlePath, cacheRoot)
+	tb, err := r.bundleLoader(bundlePath, cacheRoot)
 	if err != nil {
 		return ResolveResult{}, err
 	}

@@ -3,6 +3,7 @@ package appintegration_test
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -49,16 +50,22 @@ func TestUpgradeStateWriteFailureSurfaceError(t *testing.T) {
 		StateManager:     stateMgr,
 	}
 
+	tmpStateFile, err := os.CreateTemp("", "state-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp state file: %v", err)
+	}
+	defer os.Remove(tmpStateFile.Name())
+
 	opts := appcmd.UpgradeOptions{
 		ClusterEndpoint:  "https://cluster.local",
 		ValuesFile:       "/tmp/values.enc",
 		ValuesPassphrase: "secret",
 		ChartReference:   "oci://registry.example.com/apps/myapp:1.2.3",
-		StateFilePath:    "/var/lib/chainctl/state.json",
+		StateFilePath:    tmpStateFile.Name(),
 		Output:           "text",
 	}
 
-	err := appcmd.RunUpgradeForTest(&cobra.Command{}, opts, deps)
+	err = appcmd.RunUpgradeForTest(&cobra.Command{}, opts, deps)
 	if err == nil {
 		t.Fatalf("expected error when state manager fails")
 	}

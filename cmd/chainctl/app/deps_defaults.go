@@ -32,7 +32,17 @@ func (p *ociPuller) Pull(ctx context.Context, ref string) (helm.PullResult, erro
 	if err != nil {
 		return helm.PullResult{}, err
 	}
-	return helm.PullResult{ChartPath: path}, nil
+
+	// Attempt to extract digest from the ref (e.g., ...@sha256:...)
+	var digest string
+	if atIdx := strings.LastIndex(ref, "@sha256:"); atIdx != -1 {
+		digest = ref[atIdx+1:]
+	}
+
+	return helm.PullResult{
+		ChartPath: path,
+		Digest:    digest,
+	}, nil
 }
 
 func splitOCIReference(ref string) (string, string) {

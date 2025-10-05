@@ -45,6 +45,7 @@ func TestUpgradeWithBundlePersistsState(t *testing.T) {
 		StateManager:     stateMgr,
 	}
 
+	stateFilePath := t.TempDir() + "/state.json"
 	opts := appcmd.UpgradeOptions{
 		ClusterEndpoint:  "https://cluster.local",
 		ValuesFile:       "/tmp/values.enc",
@@ -54,7 +55,7 @@ func TestUpgradeWithBundlePersistsState(t *testing.T) {
 		ReleaseName:      "myapp-demo",
 		Namespace:        "demo",
 		AppVersion:       "1.2.3",
-		StateFilePath:    "/var/lib/chainctl/state.json",
+		StateFilePath:    stateFilePath,
 		Output:           "text",
 	}
 

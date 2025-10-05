@@ -50,6 +50,7 @@ func silentTelemetryEmitter(io.Writer) *telemetry.Emitter {
 }
 
 func TestUpgradeCommandTextOutputContract(t *testing.T) {
+	stateFilePath := t.TempDir() + "/state.json"
 	deps := appcmd.UpgradeDeps{
 		Installer:        contractInstaller{},
 		TelemetryEmitter: silentTelemetryEmitter,
@@ -57,7 +58,7 @@ func TestUpgradeCommandTextOutputContract(t *testing.T) {
 			Type:      "oci",
 			Reference: "oci://registry.example.com/apps/myapp:1.2.3",
 		}}},
-		StateManager: contractStateManager{path: "/Users/alex/.config/chainctl/state/app.json"},
+		StateManager: contractStateManager{path: stateFilePath},
 	}
 
 	opts := appcmd.UpgradeOptions{
@@ -67,7 +68,7 @@ func TestUpgradeCommandTextOutputContract(t *testing.T) {
 		ChartReference:   "oci://registry.example.com/apps/myapp:1.2.3",
 		ReleaseName:      "myapp-demo",
 		Namespace:        "demo",
-		StateFilePath:    "/Users/alex/.config/chainctl/state/app.json",
+		StateFilePath:    stateFilePath,
 		Output:           "text",
 	}
 
@@ -81,13 +82,14 @@ func TestUpgradeCommandTextOutputContract(t *testing.T) {
 	}
 
 	expected := "Upgrade completed successfully for release myapp-demo in namespace demo\n" +
-		"State written to /Users/alex/.config/chainctl/state/app.json\n"
+		"State written to " + stateFilePath + "\n"
 	if out.String() != expected {
 		t.Fatalf("text contract mismatch. expected:\n%s\nactual:\n%s", expected, out.String())
 	}
 }
 
 func TestUpgradeCommandJSONOutputContract(t *testing.T) {
+	stateFilePath := t.TempDir() + "/state.json"
 	deps := appcmd.UpgradeDeps{
 		Installer:        contractInstaller{},
 		TelemetryEmitter: silentTelemetryEmitter,
@@ -95,7 +97,7 @@ func TestUpgradeCommandJSONOutputContract(t *testing.T) {
 			Type:      "oci",
 			Reference: "oci://registry.example.com/apps/myapp:1.2.3",
 		}}},
-		StateManager: contractStateManager{path: "/Users/alex/.config/chainctl/state/app.json"},
+		StateManager: contractStateManager{path: stateFilePath},
 	}
 
 	opts := appcmd.UpgradeOptions{
@@ -105,7 +107,7 @@ func TestUpgradeCommandJSONOutputContract(t *testing.T) {
 		ChartReference:   "oci://registry.example.com/apps/myapp:1.2.3",
 		ReleaseName:      "myapp-demo",
 		Namespace:        "demo",
-		StateFilePath:    "/Users/alex/.config/chainctl/state/app.json",
+		StateFilePath:    stateFilePath,
 		Output:           "json",
 	}
 
@@ -129,7 +131,7 @@ func TestUpgradeCommandJSONOutputContract(t *testing.T) {
 		"release":   "myapp-demo",
 		"namespace": "demo",
 		"chart":     "oci://registry.example.com/apps/myapp:1.2.3",
-		"stateFile": "/Users/alex/.config/chainctl/state/app.json",
+		"stateFile": stateFilePath,
 	}
 
 	for key, expected := range expectations {

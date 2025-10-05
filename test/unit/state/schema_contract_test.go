@@ -54,7 +54,7 @@ func TestStateSchemaAcceptsValidRecord(t *testing.T) {
 		"version":    "1.2.3",
 		"lastAction": "install",
 		"timestamp":  "2025-10-05T12:34:56Z",
-		"stateFile":  "/Users/alex/.config/chainctl/state/app.json",
+		"stateFile":  "state/app.json",
 	}
 
 	if err := schema.Validate(record); err != nil {

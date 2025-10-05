@@ -48,6 +48,7 @@ func TestUpgradeWithOCIReferenceUpdatesVersion(t *testing.T) {
 		StateManager:     stateCapture,
 	}
 
+	stateFilePath := t.TempDir() + "/state.json"
 	opts := appcmd.UpgradeOptions{
 		ClusterEndpoint:  "https://cluster.local",
 		ValuesFile:       "/tmp/values.enc",
@@ -56,7 +57,7 @@ func TestUpgradeWithOCIReferenceUpdatesVersion(t *testing.T) {
 		ReleaseName:      "myapp-demo",
 		Namespace:        "demo",
 		AppVersion:       "2.0.0",
-		StateFilePath:    "/var/lib/chainctl/state.json",
+		StateFilePath:    stateFilePath,
 		Output:           "json",
 	}
 

@@ -51,7 +51,9 @@ func TestUpgradeWithOCIReferencePersistsState(t *testing.T) {
 		Source:    state.ChartSource{Type: "oci", Reference: "oci://registry.example.com/apps/myapp:1.2.3", Digest: "sha256:abc"},
 		ChartPath: "/tmp/chart",
 	}}
-	stateMgr := &stubStateManager{path: "/var/lib/chainctl/state.json"}
+	tmpDir := t.TempDir()
+	stateFilePath := tmpDir + "/state.json"
+	stateMgr := &stubStateManager{path: stateFilePath}
 	deps := appcmd.UpgradeDeps{
 		Installer:        noopInstaller{},
 		TelemetryEmitter: telemetrySilentEmitter,
@@ -67,7 +69,7 @@ func TestUpgradeWithOCIReferencePersistsState(t *testing.T) {
 		ReleaseName:      "myapp-demo",
 		Namespace:        "demo",
 		AppVersion:       "1.2.3",
-		StateFilePath:    "/var/lib/chainctl/state.json",
+		StateFilePath:    stateFilePath,
 		Output:           "text",
 	}
 
