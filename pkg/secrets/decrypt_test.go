@@ -131,7 +131,8 @@ func TestEncryptFileRejectsEmptyPayload(t *testing.T) {
 	input := filepath.Join(tempDir, "values.yaml")
 	output := filepath.Join(tempDir, "values.enc")
 
-	if err := os.WriteFile(input, []byte("   \n"), 0o600); err != nil {
+	emptyContent := "   \n"
+	if err := os.WriteFile(input, []byte(emptyContent), 0o600); err != nil {
 		t.Fatalf("write input: %v", err)
 	}
 

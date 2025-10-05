@@ -17,7 +17,8 @@ func TestDefaultInspectorAccessors(t *testing.T) {
 	if inst.MemoryGiB() < 0 {
 		t.Fatalf("expected non-negative memory")
 	}
-	if !inst.HasKernelModule("anything") {
+	const stubKernelModule = "any-kernel-module" // Used to test stub implementation always returns true
+	if !inst.HasKernelModule(stubKernelModule) {
 		t.Fatalf("expected stub kernel module check to return true")
 	}
 	_ = inst.HasSudoPrivileges()

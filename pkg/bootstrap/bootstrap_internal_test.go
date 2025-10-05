@@ -20,7 +20,7 @@ func TestDefaultRunnerRequiresCommand(t *testing.T) {
 
 func TestDefaultWaiterSleeps(t *testing.T) {
 	start := time.Now()
-	if err := (defaultWaiter{}).Wait(10 * time.Millisecond); err != nil {
+	if err := (defaultWaiter{}).Wait(2 * time.Second); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if time.Since(start) < 2*time.Second {

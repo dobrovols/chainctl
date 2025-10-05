@@ -34,7 +34,6 @@ func main() {
 	}
 
 	cmd := rootCommand()
-	cmd.SetArgs(os.Args[1:])
 	if err := cmd.Execute(); err != nil {
 		var encErr *secreterrors.Error
 		if errors.As(err, &encErr) {
