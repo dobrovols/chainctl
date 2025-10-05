@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -21,11 +20,6 @@ type Result struct {
 	Passed bool
 	Issues []string
 }
-
-var (
-	errInsufficientCPU    = errors.New("insufficient cpu cores")
-	errInsufficientMemory = errors.New("insufficient memory")
-)
 
 // ValidateHost performs local host validation prior to bootstrap or reuse flows.
 func ValidateHost(cfg HostConfig, sys SystemInspector) Result {

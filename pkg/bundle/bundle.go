@@ -5,13 +5,14 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Error sentinel values for bundle integrity validation.
@@ -55,13 +56,13 @@ type BinaryRecord struct {
 
 // Marshal serialises the manifest to YAML.
 func (m Manifest) Marshal() ([]byte, error) {
-	return json.MarshalIndent(m, "", "  ")
+	return yaml.Marshal(m)
 }
 
 // unmarshalManifest returns a Manifest from YAML bytes.
 func unmarshalManifest(data []byte) (Manifest, error) {
 	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := yaml.Unmarshal(data, &m); err != nil {
 		return Manifest{}, err
 	}
 	if m.Checksums == nil {

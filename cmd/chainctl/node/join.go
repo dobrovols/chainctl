@@ -94,8 +94,10 @@ func runJoin(cmd *cobra.Command, opts JoinCommandOptions, store tokenConsumer) e
 	}
 }
 
-var errTokenRequired = errors.New("token is required")
-var errClusterEndpoint = errors.New("cluster endpoint is required")
+var (
+	errTokenRequired   = errors.New("token is required")
+	errClusterEndpoint = errors.New("cluster endpoint is required")
+)
 
 // ErrTokenRequired exposes the sentinel.
 func ErrTokenRequired() error { return errTokenRequired }

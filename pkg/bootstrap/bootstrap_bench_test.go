@@ -15,6 +15,8 @@ func (benchRunner) Run(cmd []string, env map[string]string) error { return nil }
 func (benchWaiter) Wait(timeout time.Duration) error              { return nil }
 
 func BenchmarkBootstrap(b *testing.B) {
+	b.Setenv("CHAINCTL_K3S_INSTALL_URL", "https://example.com/install.sh")
+	b.Setenv("CHAINCTL_K3S_INSTALL_SHA256", "0000000000000000000000000000000000000000000000000000000000000000")
 	orch := NewOrchestrator(benchRunner{}, benchWaiter{})
 	profile := &config.Profile{Mode: config.ModeBootstrap, K3sVersion: "v1.30.2"}
 	b.ResetTimer()

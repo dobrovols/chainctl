@@ -11,7 +11,8 @@ func TestAppUpgradeDryRun(t *testing.T) {
 		t.Skip("skip app upgrade e2e: set CHAINCTL_E2E=1")
 	}
 
-	args := []string{"run", "./cmd/chainctl", "app", "upgrade",
+	args := []string{
+		"run", "./cmd/chainctl", "app", "upgrade",
 		"--cluster-endpoint", envOrDefault("CHAINCTL_CLUSTER_ENDPOINT", "https://cluster.local"),
 		"--values-file", envOrDefault("CHAINCTL_VALUES_FILE", "testdata/e2e/values.enc"),
 		"--values-passphrase", envOrDefault("CHAINCTL_VALUES_PASSPHRASE", "secret"),

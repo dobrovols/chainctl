@@ -55,25 +55,25 @@ func (o *Orchestrator) Bootstrap(profile *config.Profile) error {
 		return errors.New("CHAINCTL_K3S_INSTALL_SHA256 must be set for secure k3s bootstrap")
 	}
 
-    if scriptPath := os.Getenv("CHAINCTL_K3S_INSTALL_PATH"); scriptPath != "" {
-        if _, err := os.Stat(scriptPath); err != nil {
-            return fmt.Errorf("invalid CHAINCTL_K3S_INSTALL_PATH: %w", err)
-        }
-        command := fmt.Sprintf("set -euo pipefail; printf '%%s  %%s\\n' '%s' '%s' | sha256sum -c -; sh '%s'", scriptSHA, scriptPath, scriptPath)
-        cmd := []string{"sh", "-c", command}
-        if err := o.runner.Run(cmd, env); err != nil {
-            return err
-        }
-        return o.waiter.Wait(o.timeout)
-    }
+	if scriptPath := os.Getenv("CHAINCTL_K3S_INSTALL_PATH"); scriptPath != "" {
+		if _, err := os.Stat(scriptPath); err != nil {
+			return fmt.Errorf("invalid CHAINCTL_K3S_INSTALL_PATH: %w", err)
+		}
+		command := fmt.Sprintf("set -euo pipefail; printf '%%s  %%s\\n' '%s' '%s' | sha256sum -c -; sh '%s'", scriptSHA, scriptPath, scriptPath)
+		cmd := []string{"sh", "-c", command}
+		if err := o.runner.Run(cmd, env); err != nil {
+			return err
+		}
+		return o.waiter.Wait(o.timeout)
+	}
 
 	scriptURL := os.Getenv("CHAINCTL_K3S_INSTALL_URL")
 	if scriptURL == "" {
 		return errors.New("set CHAINCTL_K3S_INSTALL_URL or CHAINCTL_K3S_INSTALL_PATH")
 	}
 
-    command := fmt.Sprintf("set -euo pipefail; tmp=$(mktemp); trap 'rm -f $tmp' EXIT; curl -sfL '%s' -o \"$tmp\"; printf '%%s  %%s\\n' '%s' \"$tmp\" | sha256sum -c -; sh \"$tmp\"", scriptURL, scriptSHA)
-    cmd := []string{"sh", "-c", command}
+	command := fmt.Sprintf("set -euo pipefail; tmp=$(mktemp); trap 'rm -f $tmp' EXIT; curl -sfL '%s' -o \"$tmp\"; printf '%%s  %%s\\n' '%s' \"$tmp\" | sha256sum -c -; sh \"$tmp\"", scriptURL, scriptSHA)
+	cmd := []string{"sh", "-c", command}
 
 	if err := o.runner.Run(cmd, env); err != nil {
 		return err
@@ -83,8 +83,6 @@ func (o *Orchestrator) Bootstrap(profile *config.Profile) error {
 }
 
 type defaultRunner struct{}
-
-type execRunner struct{}
 
 func (defaultRunner) Run(cmd []string, env map[string]string) error {
 	if len(cmd) == 0 {

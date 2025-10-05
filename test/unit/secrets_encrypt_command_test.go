@@ -3,6 +3,7 @@ package unit
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -144,17 +145,11 @@ func TestEncryptValuesCommand_JSONOutput(t *testing.T) {
 }
 
 func extractChecksum(raw []byte) string {
-	key := []byte("\"checksum\":")
-	idx := bytes.Index(raw, key)
-	if idx == -1 {
+	var out struct {
+		Checksum string `json:"checksum"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return ""
 	}
-	remainder := raw[idx+len(key):]
-	remainder = bytes.TrimSpace(remainder)
-	remainder = bytes.TrimPrefix(remainder, []byte{'"'})
-	end := bytes.IndexByte(remainder, '"')
-	if end == -1 {
-		return string(remainder)
-	}
-	return string(remainder[:end])
+	return out.Checksum
 }

@@ -1,7 +1,9 @@
 package helm
 
-import "github.com/dobrovols/chainctl/internal/config"
-import "github.com/dobrovols/chainctl/pkg/bundle"
+import (
+	"github.com/dobrovols/chainctl/internal/config"
+	"github.com/dobrovols/chainctl/pkg/bundle"
+)
 
 // Executor abstracts helm upgrade execution.
 type Executor interface {

@@ -21,7 +21,9 @@ func main() {
 		cleanupCtx, cancel := context.WithTimeout(ctx, telemetryinit.ShutdownTimeout)
 		defer func() {
 			defer cancel()
-			shutdown(cleanupCtx)
+			if err := shutdown(cleanupCtx); err != nil {
+				fmt.Fprintf(os.Stderr, "telemetry shutdown error: %v\n", err)
+			}
 		}()
 	}
 
