@@ -25,7 +25,7 @@ jobs:
           GOCACHE=$(pwd)/.cache/go-build go test ./... -covermode=atomic -coverprofile=coverage.out
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@1f97601f8c23bba7b7e91f1d19f78cb0373657a6 # v2.4.1
+        uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
