@@ -47,7 +47,11 @@
 ## Constitution Check
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- **P1 · Go Craftsmanship**: Plan documents gofmt/gofumpt, `go vet`, golangci-lint, and ownership boundaries for any new packages.
+- **P2 · Test Rigor**: Plan enumerates unit, integration (envtest/kind), and e2e coverage plus failure/idempotency paths for every deliverable.
+- **P3 · Operator UX**: CLI additions follow noun-verb naming, include `--dry-run`/`--confirm`, namespace scoping, JSON parity, and non-interactive flows.
+- **P4 · Performance Budgets**: Proposed work keeps installer phases within time/memory budgets and defines benchmark strategy to prove it.
+- **P5 · Operational Safety**: Logging, telemetry, rollout/rollback, and runbook updates are defined before implementation begins.
 
 ## Project Structure
 
@@ -65,44 +69,29 @@ specs/[###-feature]/
 ### Source Code (repository root)
 <!--
   ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
+  for this feature. Delete unused paths and expand the chosen structure with
+  real directories (e.g., pkg/installer, internal/kube).
 -->
 ```
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+cmd/chainctl/
+├── main.go
+├── install/
+└── uninstall/
 
-tests/
-├── contract/
+pkg/
+├── cluster/
+├── installer/
+└── telemetry/
+
+internal/
+├── validation/
+├── config/
+└── kubeclient/
+
+test/
+├── unit/
 ├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+└── e2e/
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real
