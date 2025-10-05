@@ -1,4 +1,4 @@
-package unit
+package telemetry_test
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package unit
+package secrets_test
 
 import (
 	"errors"

@@ -1,4 +1,4 @@
-package unit
+package cluster_test
 
 import (
 	"bytes"

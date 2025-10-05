@@ -1,4 +1,4 @@
-package unit
+package tokens_test
 
 import (
 	"testing"

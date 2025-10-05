@@ -1,4 +1,4 @@
-package unit
+package upgrade_test
 
 import (
 	"errors"
