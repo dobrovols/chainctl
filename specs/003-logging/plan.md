@@ -1,0 +1,157 @@
+# Implementation Plan: Logging Transparency for Operational Steps
+
+**Branch**: `003-logging` | **Date**: 2025-10-06 | **Spec**: `specs/003-logging/spec.md`
+**Input**: Feature specification from `/specs/003-logging/spec.md`
+
+## Execution Flow (/plan command scope)
+```
+1. Load feature spec from Input path
+   → If not found: ERROR "No feature spec at {path}"
+2. Fill Technical Context (scan for NEEDS CLARIFICATION)
+   → Detect Project Type from file system structure or context (web=frontend+backend, mobile=app+api)
+   → Set Structure Decision based on project type
+3. Fill the Constitution Check section based on the content of the constitution document.
+4. Evaluate Constitution Check section below
+   → If violations exist: Document in Complexity Tracking
+   → If no justification possible: ERROR "Simplify approach first"
+   → Update Progress Tracking: Initial Constitution Check
+5. Execute Phase 0 → research.md
+   → If NEEDS CLARIFICATION remain: ERROR "Resolve unknowns"
+6. Execute Phase 1 → contracts, data-model.md, quickstart.md, agent-specific template file (e.g., `CLAUDE.md` for Claude Code, `.github/copilot-instructions.md` for GitHub Copilot, `GEMINI.md` for Gemini CLI, `QWEN.md` for Qwen Code, or `AGENTS.md` for all other agents).
+7. Re-evaluate Constitution Check section
+   → If new violations: Refactor design, return to Phase 1
+   → Update Progress Tracking: Post-Design Constitution Check
+8. Plan Phase 2 → Describe task generation approach (DO NOT create tasks.md)
+9. STOP - Ready for /tasks command
+```
+
+**IMPORTANT**: The /plan command STOPS at step 7. Phases 2-4 are executed by other commands:
+- Phase 2: /tasks command creates tasks.md
+- Phase 3-4: Implementation execution (manual or via tools)
+
+## Summary
+Implement structured logging across `chainctl` so every high-level workflow step and external command emits JSON entries with required fields (`timestamp`, `category`, `message`, `severity`), sanitized Helm invocations, and captured stderr excerpts on failure while preventing any sensitive data from leaking. If the structured logger cannot initialize, the CLI must abort before mutating cluster state and surface an actionable error.
+
+## Technical Context
+**Language/Version**: Go 1.24  
+**Primary Dependencies**: `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters  
+**Storage**: N/A (logs streamed to stdout/stderr for aggregation)  
+**Testing**: `go test ./pkg/... ./cmd/...`; new unit tests around telemetry/logger and integration tests on `cmd/chainctl/cluster` commands  
+**Target Platform**: Operator CLI on macOS/Linux managing Kubernetes clusters  
+**Project Type**: single (CLI + supporting packages)  
+**Performance Goals**: Preserve constitutional budget (install complete <10 minutes, progress updates within 5 seconds) and keep logging overhead <5% per workflow step  
+**Constraints**: Must redact secrets/tokens, reuse existing telemetry writer to avoid duplicate output streams, support `--output`/`--dry-run` UX, honor structured logging field contract, and fail fast when structured logging cannot initialize  
+**Scale/Scope**: Applies to cluster install/upgrade workflows, bootstrap external commands, and Helm execution; logs ingested by centralized ELK stack across many clusters
+
+## Constitution Check
+- **P1 · Go Craftsmanship**: Plan keeps instrumentation within existing packages (`pkg/telemetry`, `pkg/bootstrap`, `cmd/chainctl/cluster`) with dedicated unit tests, gofmt/gofumpt + golangci-lint enforced, and wrapped errors when logging fails. **PASS**
+- **P2 · Test Rigor**: Introduce table-driven unit tests for sanitization and logger JSON format, golden/fixture integration tests validating CLI output for dry-run/success/failure paths, and ensure failure cases trigger stderr capture assertions. **PASS**
+- **P3 · Operator UX**: Logging changes preserve noun-verb commands, respect `--dry-run`/`--confirm`, maintain text output defaults alongside JSON logs, and document how to access structured events in quickstart/runbooks. **PASS**
+- **P4 · Performance Budgets**: Logging buffers avoid blocking installer flow, benchmarks added for `pkg/telemetry` writer to confirm <5% overhead, and Helm/install latency tracked via existing telemetry durations. **PASS**
+- **P5 · Operational Safety**: Structured logs include workflow correlation IDs, sanitized Helm command strings, captured stderr snippets, fail fast when logging cannot initialize, and updates to runbooks so operators can troubleshoot securely. **PASS**
+
+## Project Structure
+
+### Documentation (this feature)
+```
+specs/003-logging/
+├── plan.md              # This file (/plan output)
+├── research.md          # Phase 0 findings
+├── data-model.md        # Phase 1 entities & rules
+├── quickstart.md        # Phase 1 operator walkthrough
+├── contracts/
+│   └── logging-schema.json  # JSON schema for structured log entries
+└── tasks.md             # Generated by /tasks
+```
+
+### Source Code (repository root)
+```
+cmd/chainctl/cluster/
+├── install.go                # Wire workflow logging around bootstrap/helm steps
+├── upgrade.go                # Mirror logging for upgrade flow
+├── logging.go                # NEW helper for workflow step logging wrappers
+
+cmd/chainctl/app/
+└── action.go                 # Ensure Helm resolve/install actions emit sanitized command logs
+
+pkg/bootstrap/
+├── bootstrap.go              # Capture external command executions + stderr
+└── runner.go                 # NEW runner wrapper returning command + stderr payloads
+
+pkg/helm/
+├── executor.go               # NEW interface adapter to expose raw helm CLI invocation
+└── client.go                 # Use logging helper when delegating installs
+
+pkg/telemetry/
+├── emitter.go                # Extend to share writers and correlation IDs
+├── logger.go                 # NEW structured log entry + writer implementation
+└── logger_test.go            # Unit tests for serialization & sanitization
+
+internal/cli/logging/
+├── sanitizer.go              # NEW helpers for redacting secrets from commands/stderr
+└── sanitizer_test.go         # Coverage for sanitization rules
+
+test/integration/
+└── cluster_logging_test.go   # Validate structured logs during install/upgrade flows
+```
+
+**Structure Decision**: Continue using `cmd/chainctl/cluster` for CLI orchestration while centralising structured logging primitives in `pkg/telemetry` and shared sanitisation helpers under `internal/cli/logging`; new helpers are factored to avoid circular deps and keep logging accessible to bootstrap/helm components.
+
+## Phase 0: Outline & Research
+1. **Unknowns Identified**:
+   - Sanitisation strategy for command strings and stderr without losing troubleshooting fidelity.
+   - Correlation identifier scope (per command invocation vs per workflow step).
+   - Writer strategy to avoid duplicate stdout logging when telemetry emitter already prints JSON.
+
+2. **Research Tasks**:
+   - Investigate existing `pkg/telemetry` emitter capabilities and how to extend without breaking consumers.
+   - Evaluate redaction patterns (token detection via regex, env var allowlist) for Helm commands and shell scripts.
+   - Determine buffering approach for stderr that allows safe logging while still streaming to operator when necessary.
+
+3. **Outputs**: Documented in `research.md` with decision/rationale/alternatives for emitter extension, sanitization design, stderr capture method.
+
+## Phase 1: Design & Contracts
+1. **Data Model**: Capture `StructuredLogEntry`, `WorkflowContext`, and `CommandInvocation` entities in `data-model.md` with required fields, sanitization rules, and relationships between workflow step logs and command logs.
+2. **Contracts**: Define `contracts/logging-schema.json` describing JSON fields (`timestamp`, `category`, `message`, `severity`, `workflowId`, `step`, `command`, `stderrExcerpt`, `metadata`). Provide schema for required/optional fields used by tests.
+3. **Quickstart**: Document operator validation steps for viewing structured logs (dry-run, success, failure) and verifying ingestion readiness in `quickstart.md`.
+4. **Agent Context**: After plan completion, rerun `.specify/scripts/bash/update-agent-context.sh codex` to record new telemetry/logging focus once Technical Context is finalised.
+
+## Phase 2: Task Planning Approach
+**Task Generation Strategy**:
+- Use `data-model.md` entities and logging schema to create unit/integration/benchmark tasks.
+- Derive tasks ensuring sanitization helpers, Logger writer, and CLI wiring each have TDD coverage.
+- Include tasks for documentation/runbook updates mandated by P5.
+
+**Ordering Strategy**:
+- Author sanitization + logger unit tests first, then bootstrap/helm integration tests, followed by CLI wiring.
+- Keep bootstrap and helm wiring parallel once shared helpers ready; upgrade tests depend on install instrumentation.
+
+**Estimated Output**: 24-27 ordered tasks (unit + integration + docs) in `tasks.md`.
+
+## Phase 3+: Future Implementation
+**Phase 3**: /tasks command generates tasks.md  
+**Phase 4**: Implement logging helpers, integrate with CLI workflows, run gofmt/gofumpt + lint/tests  
+**Phase 5**: Validate via integration tests and document sample logs/benchmarks
+
+## Complexity Tracking
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| *(none)* | | |
+
+## Progress Tracking
+**Phase Status**:
+- [x] Phase 0: Research complete (/plan command)
+- [x] Phase 1: Design complete (/plan command)
+- [ ] Phase 2: Task planning complete (/plan command - describe approach only)
+- [ ] Phase 3: Tasks generated (/tasks command)
+- [ ] Phase 4: Implementation complete
+- [ ] Phase 5: Validation passed
+
+**Gate Status**:
+- [x] Initial Constitution Check: PASS
+- [x] Post-Design Constitution Check: PASS
+- [x] All NEEDS CLARIFICATION resolved
+- [ ] Complexity deviations documented
+
+---
+*Based on Constitution v1.2.0 - See `.specify/memory/constitution.md`*

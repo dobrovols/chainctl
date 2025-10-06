@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chainctl Structured Log Entry",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "category",
+    "message",
+    "severity"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["workflow", "command", "diagnostic"]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warn", "error"]
+    },
+    "workflowId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    },
+    "step": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "stderrExcerpt": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
