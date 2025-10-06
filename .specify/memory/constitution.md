@@ -1,13 +1,14 @@
 <!--
 Sync Impact Report
-Version change: 1.0.0 → 1.1.0
-Modified principles: P2. Test Rigor for Cluster Confidence → P2. Test Rigor for Cluster Confidence
+Version change: 1.1.0 → 1.2.0
+Modified principles:
+  P5. Operational Safety & Observability (expanded logging requirements)
 Added sections: none
 Removed sections: none
 Templates requiring updates:
-  ✅ .specify/templates/plan-template.md
-  ✅ .specify/templates/spec-template.md
-  ✅ .specify/templates/tasks-template.md
+  ✅ .specify/templates/plan-template.md (logging guardrail already enforces structured logging)
+  ✅ .specify/templates/spec-template.md (requirements guidance remains aligned)
+  ✅ .specify/templates/tasks-template.md (logging tasks already covered)
 Follow-up TODOs: none
 -->
 # chainctl Constitution
@@ -45,6 +46,8 @@ Rationale: Predictable performance makes large-cluster rollouts feasible and scr
 
 ### P5. Operational Safety & Observability
 - Every command touching cluster state MUST emit structured logs (JSON) at info/error and support `--log-level` overrides.
+- High-level workflow steps and external command invocations MUST log structured entries capturing step identifiers, sanitized command strings, and correlation IDs; Helm commands MUST record the exact invocation with secrets redacted.
+- On external command failure, structured logs MUST include captured stderr excerpts after sanitization and link to the originating workflow step.
 - Telemetry hooks MUST capture duration, success/failure, and cluster identifiers without leaking secrets.
 - Rollback paths and feature flags MUST exist for all new installation behaviors before exposure in stable channels.
 - Operational runbooks MUST be updated alongside code when UX or performance behaviors change.
@@ -68,4 +71,4 @@ Rationale: Safe observability allows operators to diagnose and recover from fail
 - The maintainers chair schedules quarterly compliance reviews; findings feed backlog items within one sprint.
 - Emergency deviations MUST be documented in the affected PR and resolved before the next release branch is cut.
 
-**Version**: 1.1.0 | **Ratified**: 2025-10-05 | **Last Amended**: 2025-10-05
+**Version**: 1.2.0 | **Ratified**: 2025-10-05 | **Last Amended**: 2025-10-06
