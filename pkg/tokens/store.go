@@ -30,6 +30,52 @@ var (
 	errInvalidTokenFmt = errors.New("invalid token format")
 )
 
+func generateToken(opts CreateOptions, now time.Time) (*Token, *CreatedToken, error) {
+	if opts.Scope != ScopeWorker && opts.Scope != ScopeControlPlane {
+		return nil, nil, fmt.Errorf("unknown scope %q", opts.Scope)
+	}
+	ttl := opts.TTL
+	if ttl <= 0 {
+		ttl = 2 * time.Hour
+	}
+	if ttl > maxTTL {
+		return nil, nil, fmt.Errorf("ttl %s exceeds maximum %s", ttl, maxTTL)
+	}
+
+	id, err := randomHex(8)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate id: %w", err)
+	}
+	secret, err := randomHex(16)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate secret: %w", err)
+	}
+
+	expires := now.Add(ttl)
+	hashed := hashSecret(id, secret)
+
+	record := &Token{
+		ID:           id,
+		Scope:        opts.Scope,
+		ExpiresAt:    expires,
+		HashedSecret: hashed,
+		CreatedBy:    opts.CreatedBy,
+		Description:  opts.Description,
+	}
+
+	composite := fmt.Sprintf("%s.%s", id, secret)
+	created := &CreatedToken{
+		ID:          record.ID,
+		Scope:       record.Scope,
+		ExpiresAt:   record.ExpiresAt,
+		CreatedBy:   record.CreatedBy,
+		Description: record.Description,
+		Token:       composite,
+	}
+
+	return record, created, nil
+}
+
 // CreateOptions defines how tokens are generated.
 type CreateOptions struct {
 	Scope       Scope
@@ -72,51 +118,16 @@ func NewMemoryStore() *MemoryStore {
 
 // Create generates a new token and returns metadata plus the composite token string.
 func (s *MemoryStore) Create(opts CreateOptions) (*CreatedToken, error) {
-	if opts.Scope != ScopeWorker && opts.Scope != ScopeControlPlane {
-		return nil, fmt.Errorf("unknown scope %q", opts.Scope)
-	}
-	ttl := opts.TTL
-	if ttl <= 0 {
-		ttl = 2 * time.Hour
-	}
-	if ttl > maxTTL {
-		return nil, fmt.Errorf("ttl %s exceeds maximum %s", ttl, maxTTL)
-	}
-
-	id, err := randomHex(8)
+	record, created, err := generateToken(opts, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("generate id: %w", err)
-	}
-	secret, err := randomHex(16)
-	if err != nil {
-		return nil, fmt.Errorf("generate secret: %w", err)
-	}
-
-	hashed := hashSecret(id, secret)
-
-	record := &Token{
-		ID:           id,
-		Scope:        opts.Scope,
-		ExpiresAt:    time.Now().Add(ttl),
-		HashedSecret: hashed,
-		CreatedBy:    opts.CreatedBy,
-		Description:  opts.Description,
+		return nil, err
 	}
 
 	s.mu.Lock()
-	s.tokens[id] = record
+	s.tokens[record.ID] = record
 	s.mu.Unlock()
 
-	composite := fmt.Sprintf("%s.%s", id, secret)
-
-	return &CreatedToken{
-		ID:          record.ID,
-		Scope:       record.Scope,
-		ExpiresAt:   record.ExpiresAt,
-		CreatedBy:   record.CreatedBy,
-		Description: record.Description,
-		Token:       composite,
-	}, nil
+	return created, nil
 }
 
 // Consume validates and marks a token as used.

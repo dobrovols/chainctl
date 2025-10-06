@@ -57,7 +57,7 @@ chainctl cluster install \
   [--dry-run] \
   [--output json]
 ```
-- Host preflight (CPU, memory, `br_netfilter`, sudo) enforced.
+- Host preflight (CPU, memory, `br_netfilter`, `overlay`, sudo) enforced.
 - Reuse mode loads kubeconfig and validates cluster connectivity.
 - Dry-run returns immediately after validations, logging to `artifacts/dry-run/` via script.
 

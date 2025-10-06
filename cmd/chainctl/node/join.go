@@ -26,10 +26,6 @@ type tokenConsumer interface {
 	Consume(string, tokens.Scope) error
 }
 
-func joinStore() tokenConsumer {
-	return tokens.NewMemoryStore()
-}
-
 // NewJoinCommand returns the `chainctl node join` command.
 func NewJoinCommand() *cobra.Command {
 	opts := JoinCommandOptions{}
