@@ -80,7 +80,9 @@ Generated outputs land in `artifacts/`:
 ## Tests
 - Unit tests: `go test ./test/unit`
 - Integration (envtest): `KUBEBUILDER_ASSETS=... go test ./test/integration`
-- e2e (requires KIND/kubeconfig): `CHAINCTL_E2E=1 go test ./test/e2e`
+- e2e: `CHAINCTL_E2E=1 CHAINCTL_E2E_SUDO=1 go test ./test/e2e` (see
+  `test/e2e/README.md` for optional variables like `CHAINCTL_E2E_CLUSTER_REUSE`
+  and `CHAINCTL_JOIN_TOKEN`)
 
 ## License
 This project is distributed under the MIT License.
