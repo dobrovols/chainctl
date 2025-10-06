@@ -1,9 +1,11 @@
 package validation
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 )
 
 // HostConfig captures prerequisites required by the installer.
@@ -110,8 +112,32 @@ func splitLines(s string) []string {
 	return lines
 }
 
-// TODO: HasKernelModule always returns true until kernel module inspection is implemented.
-func (DefaultInspector) HasKernelModule(string) bool { return true }
+// HasKernelModule reports whether a Linux kernel module is present (loaded).
+// On Linux, it parses /proc/modules; on non-Linux systems it returns false.
+func (DefaultInspector) HasKernelModule(name string) bool {
+	if name == "" {
+		return false
+	}
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	f, err := os.Open("/proc/modules")
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	// /proc/modules lines start with module name followed by a space.
+	// e.g.: "br_netfilter 32768 0 - Live 0x0000000000000000"
+	prefix := name + " "
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 // HasSudoPrivileges checks if running as root.
 func (DefaultInspector) HasSudoPrivileges() bool { return os.Geteuid() == 0 }

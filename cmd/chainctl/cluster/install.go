@@ -141,7 +141,7 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) error
 		RequireSudo:   true,
 		MinCPU:        2,
 		MinMemoryGiB:  4,
-		KernelModules: []string{"br_netfilter"},
+		KernelModules: []string{"br_netfilter", "overlay"},
 	}, inspector)
 
 	if !hostResult.Passed {
