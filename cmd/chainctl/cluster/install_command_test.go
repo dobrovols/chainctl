@@ -84,7 +84,7 @@ func TestInstallCommandSentinelsExposeErrors(t *testing.T) {
 }
 
 func TestClusterInstallCommand_TextSuccess(t *testing.T) {
-	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true}
+	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true}
 	bootstrap := &fakeBootstrap{}
 	helm := &fakeHelm{}
 
@@ -128,7 +128,7 @@ func TestClusterInstallCommand_TextSuccess(t *testing.T) {
 }
 
 func TestClusterInstallCommand_DryRunSkipsBootstrap(t *testing.T) {
-	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true}
+	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true}
 	bootstrap := &fakeBootstrap{}
 	helm := &fakeHelm{}
 
@@ -173,7 +173,7 @@ func TestClusterInstallCommand_DryRunSkipsBootstrap(t *testing.T) {
 }
 
 func TestClusterInstallCommand_JSONOutput(t *testing.T) {
-	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true}
+	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true}
 
 	deps := clustercmd.InstallDeps{
 		Inspector: inspector,
@@ -209,7 +209,7 @@ func TestClusterInstallCommand_JSONOutput(t *testing.T) {
 }
 
 func TestClusterInstallCommand_AirgappedRequiresBundle(t *testing.T) {
-	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true}
+	inspector := stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true}
 	deps := clustercmd.InstallDeps{
 		Inspector: inspector,
 		BundleLoader: func(path, cache string) (*bundle.Bundle, error) {
@@ -265,7 +265,7 @@ func TestClusterInstallCommand_ReuseValidatesCluster(t *testing.T) {
 	validatorCalled := false
 	loaderCalled := false
 	deps := clustercmd.InstallDeps{
-		Inspector: stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		Inspector: stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true},
 		BundleLoader: func(path, cache string) (*bundle.Bundle, error) {
 			return nil, nil
 		},
@@ -311,7 +311,7 @@ func TestClusterInstallCommand_ReuseValidatesCluster(t *testing.T) {
 
 func TestClusterInstallCommand_UnsupportedOutput(t *testing.T) {
 	deps := clustercmd.InstallDeps{
-		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true},
 		Bootstrapper:     &fakeBootstrap{},
 		HelmInstaller:    &fakeHelm{},
 		TelemetryEmitter: telemetryStub,
@@ -333,7 +333,7 @@ func TestClusterInstallCommand_UnsupportedOutput(t *testing.T) {
 func TestClusterInstallCommand_AirgappedLoadsBundle(t *testing.T) {
 	var called bool
 	deps := clustercmd.InstallDeps{
-		Inspector: stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		Inspector: stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true},
 		BundleLoader: func(path, cache string) (*bundle.Bundle, error) {
 			called = true
 			if path != "/mnt/airgap.tar" {
@@ -372,7 +372,7 @@ func TestClusterInstallCommand_AirgappedLoadsBundle(t *testing.T) {
 
 func TestClusterInstallCommand_LoadClusterConfigError(t *testing.T) {
 	deps := clustercmd.InstallDeps{
-		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true}, sudo: true},
+		Inspector:        stubInspector{cpu: 8, memory: 16, modules: map[string]bool{"br_netfilter": true, "overlay": true}, sudo: true},
 		BundleLoader:     func(string, string) (*bundle.Bundle, error) { return nil, nil },
 		Bootstrapper:     &fakeBootstrap{},
 		HelmInstaller:    &fakeHelm{},
