@@ -9,6 +9,9 @@ func TestClusterUpgradePlan(t *testing.T) {
 	if os.Getenv("CHAINCTL_E2E") == "" {
 		t.Skip("skip cluster upgrade e2e: set CHAINCTL_E2E=1")
 	}
+	if os.Getenv("CHAINCTL_E2E_SUDO") != "1" {
+		t.Skip("skip cluster upgrade e2e: set CHAINCTL_E2E_SUDO=1 to permit sudo execution")
+	}
 
 	cmd := goCommand(t, projectRoot(t), []string{"GO111MODULE=on"},
 		"run", "./cmd/chainctl", "cluster", "upgrade",

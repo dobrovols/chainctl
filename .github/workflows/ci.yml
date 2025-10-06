@@ -61,7 +61,6 @@ jobs:
           CHAINCTL_E2E: "1"
           CHAINCTL_E2E_SUDO: "1"
           CHAINCTL_CLUSTER_ENDPOINT: "https://cluster.local"
-          CHAINCTL_JOIN_TOKEN: "dummy-token"
           CHAINCTL_VALUES_FILE: "test/e2e/testdata/values.enc"
           CHAINCTL_VALUES_PASSPHRASE: "secret"
         run: |
