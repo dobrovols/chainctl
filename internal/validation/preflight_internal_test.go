@@ -17,9 +17,8 @@ func TestDefaultInspectorAccessors(t *testing.T) {
 	if inst.MemoryGiB() < 0 {
 		t.Fatalf("expected non-negative memory")
 	}
-	const stubKernelModule = "any-kernel-module" // Used to test stub implementation always returns true
-	if !inst.HasKernelModule(stubKernelModule) {
-		t.Fatalf("expected stub kernel module check to return true")
-	}
+	// Kernel module detection is OS-dependent; just call it to ensure it doesn't panic.
+	_ = inst.HasKernelModule("br_netfilter")
+	_ = inst.HasKernelModule("overlay")
 	_ = inst.HasSudoPrivileges()
 }
