@@ -5,16 +5,19 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/dobrovols/chainctl/pkg/state"
+	state "github.com/dobrovols/chainctl/pkg/state"
 )
 
 type stubResolver struct {
-	baseDir string
-	last    state.Overrides
-	fail    error
+	baseDir    string
+	last       state.Overrides
+	fail       error
+	fixedPath  string
+	forceEmpty bool
 }
 
 func (s *stubResolver) Resolve(overrides state.Overrides) (string, error) {
@@ -22,8 +25,14 @@ func (s *stubResolver) Resolve(overrides state.Overrides) (string, error) {
 	if s.fail != nil {
 		return "", s.fail
 	}
+	if s.forceEmpty {
+		return "", nil
+	}
 	if overrides.StateFilePath != "" {
 		return overrides.StateFilePath, nil
+	}
+	if s.fixedPath != "" {
+		return s.fixedPath, nil
 	}
 	dir := overrides.StateDirectory
 	if dir == "" {
@@ -178,5 +187,57 @@ func TestManagerReturnsErrorWhenDirectoryReadOnly(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrPermission) && !os.IsPermission(err) {
 		t.Fatalf("expected permission error, got %v", err)
+	}
+}
+
+func TestManagerErrorWhenResolverMissing(t *testing.T) {
+	manager := state.NewManager(nil)
+	_, err := manager.Write(sampleRecord("1.0.0"), state.Overrides{})
+	if err == nil {
+		t.Fatal("expected error when resolver is missing")
+	}
+}
+
+func TestManagerErrorWhenResolverReturnsEmptyPath(t *testing.T) {
+	bad := &stubResolver{baseDir: "", forceEmpty: true}
+	manager := state.NewManager(bad)
+	_, err := manager.Write(sampleRecord("1.0.0"), state.Overrides{})
+	if err == nil {
+		t.Fatal("expected error for empty resolved path")
+	}
+}
+
+func TestManagerPropagatesEncoderErrors(t *testing.T) {
+	base := t.TempDir()
+	// Make target path a directory so os.Rename to it fails due to existing dir
+	target := filepath.Join(base, "app.json")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	resolver := &stubResolver{baseDir: base, fixedPath: target}
+	manager := state.NewManager(resolver)
+
+	_, err := manager.Write(sampleRecord("1.0.0"), state.Overrides{})
+	if err == nil {
+		t.Fatal("expected error when rename to existing directory fails")
+	}
+	if !strings.Contains(err.Error(), state.ErrWriteFailed().Error()) {
+		t.Fatalf("expected wrapped write failed error, got %v", err)
+	}
+}
+
+func TestManagerSetsTimestampWhenMissing(t *testing.T) {
+	base := t.TempDir()
+	resolver := &stubResolver{baseDir: base}
+	manager := state.NewManager(resolver)
+	rec := sampleRecord("1.2.3")
+	rec.Timestamp = ""
+	path, err := manager.Write(rec, state.Overrides{StateDirectory: base})
+	if err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+	payload := readJSON(t, path)
+	if payload["timestamp"] == "" {
+		t.Fatal("expected timestamp to be set")
 	}
 }
