@@ -20,15 +20,9 @@ type TokenCommandOptions struct {
 	Output      string
 }
 
-// tokenStore abstracts token persistence (cluster integration TBD).
+// tokenStore abstracts token persistence backends.
 type tokenStore interface {
 	Create(tokens.CreateOptions) (*tokens.CreatedToken, error)
-}
-
-// defaultStore returns the store used in production.
-func defaultStore() tokenStore {
-	// TODO: swap with cluster-backed implementation (e.g., Kubernetes secrets).
-	return tokens.NewMemoryStore()
 }
 
 // NewTokenCommand creates the `chainctl node token create` command.
