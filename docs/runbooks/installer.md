@@ -79,6 +79,9 @@ Guide operators through installing, upgrading, and troubleshooting the chainctl-
 - Helm telemetry now includes `source`, `namespace`, and OCI `digest` attributes.
 - Hash cluster identifiers via `CHAINCTL_CLUSTER_ID` for anonymised metrics.
 - Attach telemetry samples from `docs/telemetry/state-persistence.md` and `artifacts/dry-run/` to incident reports.
+- Structured logs are emitted to stdout; capture them via `tee` when running CLI commands to ingest into ELK/Stackdriver.
+- Each workflow writes `workflowId`, `step`, sanitized `command`, and truncated `stderrExcerpt`. Verify secrets appear as `***` before uploading artifacts.
+- If `initialize structured logging` errors are observed, the CLI aborts before mutating state—inspect permissions on the log sink or re-enable stdout capture.
 
 ## Disaster Recovery
 1. Disable upgrade plan by deleting the `Plan` resource (`kubectl delete plan -n system-upgrade chainctl-upgrade`).

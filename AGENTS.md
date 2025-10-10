@@ -29,6 +29,7 @@ Go 1.24 (gofmt + gofumpt enforced): use wrapped errors, keep exported function d
 
 ## Recent Changes
 - 003-logging: Added Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters
+- 003-logging: Added Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters
 - 002-oci-helm-state: Added CLI support for OCI chart references (`--chart oci://...`), mutually exclusive with `--bundle-path`; persisted state file with overrides (`--state-file`, `--state-file-name`). Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`) leveraged alongside existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry`.
 
 <!-- MANUAL ADDITIONS START -->

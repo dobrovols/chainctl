@@ -155,7 +155,10 @@ func TestResolveStateOverridesUsesResolver(t *testing.T) {
 
 func TestTelemetryEmitterDefaultEmitsEvents(t *testing.T) {
 	var buf bytes.Buffer
-	emitter := telemetryEmitterDefault(&buf)
+	emitter, err := telemetryEmitterDefault(&buf)
+	if err != nil {
+		t.Fatalf("expected emitter without error, got %v", err)
+	}
 	if emitter == nil {
 		t.Fatal("expected emitter instance")
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dobrovols/chainctl/pkg/telemetry"
 	"github.com/dobrovols/chainctl/pkg/tokens"
 )
 
@@ -54,7 +55,7 @@ func RunJoinForTest(cmd *cobra.Command, opts JoinCommandOptions, store tokenCons
 	return runJoin(cmd, opts, store)
 }
 
-func runJoin(cmd *cobra.Command, opts JoinCommandOptions, store tokenConsumer) error {
+func runJoin(cmd *cobra.Command, opts JoinCommandOptions, store tokenConsumer) (err error) {
 	if strings.TrimSpace(opts.ClusterEndpoint) == "" {
 		return ErrClusterEndpoint()
 	}
@@ -66,8 +67,35 @@ func runJoin(cmd *cobra.Command, opts JoinCommandOptions, store tokenConsumer) e
 		return errTokenRequired
 	}
 
-	if err := store.Consume(opts.Token, scope); err != nil {
-		return fmt.Errorf("validate token: %w", err)
+	emitter, emitErr := telemetry.NewEmitter(cmd.OutOrStdout())
+	if emitErr != nil {
+		return fmt.Errorf("initialize structured logging: %w", emitErr)
+	}
+	logger := emitter.StructuredLogger()
+	if logger == nil {
+		return fmt.Errorf("structured logger unavailable")
+	}
+
+	metadata := map[string]string{
+		"cluster": opts.ClusterEndpoint,
+		"role":    string(scope),
+	}
+	if len(opts.Labels) > 0 {
+		metadata["labels"] = strings.Join(opts.Labels, ",")
+	}
+	if len(opts.Taints) > 0 {
+		metadata["taints"] = strings.Join(opts.Taints, ",")
+	}
+
+	logWorkflowStart(logger, stepNodeJoin, metadata)
+	defer func() {
+		if err != nil {
+			logWorkflowFailure(logger, stepNodeJoin, metadata, err)
+		}
+	}()
+
+	if consumeErr := store.Consume(opts.Token, scope); consumeErr != nil {
+		return fmt.Errorf("validate token: %w", consumeErr)
 	}
 
 	switch opts.Output {
@@ -81,13 +109,17 @@ func runJoin(cmd *cobra.Command, opts JoinCommandOptions, store tokenConsumer) e
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(payload)
+		if encodeErr := enc.Encode(payload); encodeErr != nil {
+			return encodeErr
+		}
 	case "text":
 		fmt.Fprintf(cmd.OutOrStdout(), "Validated token for role %s against cluster %s\n", scope, opts.ClusterEndpoint)
-		return nil
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
 	}
+
+	logWorkflowSuccess(logger, stepNodeJoin, metadata)
+	return nil
 }
 
 var (

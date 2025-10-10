@@ -78,7 +78,7 @@ func (o UpgradeOptions) shared() sharedOptions {
 	}
 }
 
-func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, action appAction) error {
+func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, action appAction) (err error) {
 	ensureDeps(&deps)
 
 	if strings.TrimSpace(options.ValuesFile) == "" {
@@ -98,40 +98,82 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 		return err
 	}
 
-	ctx := cmd.Context()
-	resolved, err := resolveChartSource(ctx, options, deps)
-	if err != nil {
-		return err
-	}
-
-	bundleInstance := resolved.Bundle
-
-	metadata := map[string]string{
-		"mode":   string(profile.Mode),
-		"source": resolved.Outcome.Source.Type,
-	}
-	if ns := profile.HelmNamespace; ns != "" {
-		metadata["namespace"] = ns
-	}
-	if digest := resolved.Outcome.Source.Digest; digest != "" {
-		metadata["digest"] = digest
-	}
-
 	emitter := deps.TelemetryEmitter
 	if emitter == nil {
 		emitter = telemetryEmitterDefault
 	}
-	tel := emitter(cmd.ErrOrStderr())
+	tel, err := emitter(cmd.ErrOrStderr())
+	if err != nil {
+		return fmt.Errorf("initialize structured logging: %w", err)
+	}
+	logger := tel.StructuredLogger()
+	if logger == nil {
+		return fmt.Errorf("structured logger unavailable")
+	}
+
+	workflowStep := workflowStepName(action)
+	workflowMetadata := map[string]string{
+		"mode":      string(profile.Mode),
+		"namespace": profile.HelmNamespace,
+		"release":   profile.HelmRelease,
+	}
+	if profile.ClusterEndpoint != "" {
+		workflowMetadata["cluster"] = profile.ClusterEndpoint
+	}
+	logWorkflowStart(logger, workflowStep, workflowMetadata)
+	defer func() {
+		if err != nil {
+			logWorkflowFailure(logger, workflowStep, workflowMetadata, err)
+		}
+	}()
+
+	ctx := cmd.Context()
+	resolveArgs := buildResolveArgs(options)
+	resolved, err := resolveChartSource(ctx, options, deps)
+	if err != nil {
+		resolveMetadata := buildResolveMetadata(nil, options)
+		logCommandEntry(logger, stepHelmResolve, resolveArgs, err.Error(), telemetry.SeverityError, resolveMetadata, err)
+		return err
+	}
+	resolveMetadata := buildResolveMetadata(&resolved.Outcome, options)
+	logCommandEntry(logger, stepHelmResolve, resolveArgs, "", telemetry.SeverityInfo, resolveMetadata, nil)
+	if resolved.Outcome.Source.Type != "" {
+		workflowMetadata["source"] = resolved.Outcome.Source.Type
+	}
+	if resolved.Outcome.Source.Digest != "" {
+		workflowMetadata["digest"] = resolved.Outcome.Source.Digest
+	}
+
+	bundleInstance := resolved.Bundle
+
+	helmHasLogging := false
+	if installer, ok := deps.Installer.(*helm.Installer); ok {
+		deps.Installer = installer.WithLogger(logger)
+		helmHasLogging = true
+	}
+
+	helmMetadata := buildHelmInstallMetadata(profile, resolved.Outcome)
+	helmArgs := buildHelmInstallArgs(profile, options)
 
 	execute := func() error {
 		installer := deps.Installer
 		if installer == nil {
 			installer = noopInstaller{}
 		}
-		return installer.Install(profile, bundleInstance)
+		installErr := installer.Install(profile, bundleInstance)
+		if !helmHasLogging {
+			severity := telemetry.SeverityInfo
+			stderr := ""
+			if installErr != nil {
+				severity = telemetry.SeverityError
+				stderr = installErr.Error()
+			}
+			logCommandEntry(logger, stepHelmCommand, helmArgs, stderr, severity, helmMetadata, installErr)
+		}
+		return installErr
 	}
 
-	if err := tel.EmitPhase(telemetry.PhaseHelm, metadata, execute); err != nil {
+	if err := tel.EmitPhase(telemetry.PhaseHelm, helmMetadata, execute); err != nil {
 		return err
 	}
 
@@ -144,15 +186,17 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 		ClusterEndpoint: profile.ClusterEndpoint,
 	}
 
-	statePath, err := deps.StateManager.Write(record, stateOverrides)
-	if err != nil {
-		return fmt.Errorf("state file could not be written: %w", err)
+	statePath, writeErr := deps.StateManager.Write(record, stateOverrides)
+	if writeErr != nil {
+		err = fmt.Errorf("state file could not be written: %w", writeErr)
+		return err
 	}
 
 	if statePath == "" {
 		statePath = statePathHint
 	}
 
+	logWorkflowSuccess(logger, workflowStep, workflowMetadata)
 	return emitOutput(cmd, profile, resolved.Outcome, statePath, options.Output, action, options)
 }
 
@@ -243,6 +287,17 @@ func deriveVersion(opts sharedOptions, res helm.ResolveResult) string {
 	return ""
 }
 
+func workflowStepName(action appAction) string {
+	switch action {
+	case actionInstall:
+		return stepAppInstall
+	case actionUpgrade:
+		return stepAppUpgrade
+	default:
+		return fmt.Sprintf("app-%s", action)
+	}
+}
+
 func emitOutput(cmd *cobra.Command, profile *config.Profile, result helm.ResolveResult, statePath string, format string, action appAction, opts sharedOptions) error {
 	title := ""
 	switch action {
@@ -284,6 +339,76 @@ func emitOutput(cmd *cobra.Command, profile *config.Profile, result helm.Resolve
 	}
 }
 
-func telemetryEmitterDefault(w io.Writer) *telemetry.Emitter {
+func buildResolveArgs(opts sharedOptions) []string {
+	if strings.TrimSpace(opts.ChartReference) != "" {
+		return []string{"helm", "pull", opts.ChartReference}
+	}
+	if strings.TrimSpace(opts.BundlePath) != "" {
+		return []string{"bundle", "load", opts.BundlePath}
+	}
+	return []string{"helm", "pull"}
+}
+
+func buildResolveMetadata(res *helm.ResolveResult, opts sharedOptions) map[string]string {
+	meta := map[string]string{}
+	if res != nil {
+		if res.Source.Type != "" {
+			meta["source"] = res.Source.Type
+		}
+		if res.Source.Reference != "" {
+			meta["reference"] = res.Source.Reference
+		}
+		if res.Source.Digest != "" {
+			meta["digest"] = res.Source.Digest
+		}
+	} else {
+		if strings.TrimSpace(opts.ChartReference) != "" {
+			meta["reference"] = opts.ChartReference
+		}
+		if strings.TrimSpace(opts.BundlePath) != "" {
+			meta["bundlePath"] = opts.BundlePath
+		}
+	}
+	return meta
+}
+
+func buildHelmInstallMetadata(profile *config.Profile, res helm.ResolveResult) map[string]string {
+	meta := map[string]string{
+		"namespace": profile.HelmNamespace,
+		"release":   profile.HelmRelease,
+	}
+	if res.Source.Type != "" {
+		meta["source"] = res.Source.Type
+	}
+	if res.Source.Reference != "" {
+		meta["reference"] = res.Source.Reference
+	}
+	if res.Source.Digest != "" {
+		meta["digest"] = res.Source.Digest
+	}
+	return meta
+}
+
+func buildHelmInstallArgs(profile *config.Profile, opts sharedOptions) []string {
+	args := []string{"helm", "upgrade", profile.HelmRelease}
+	if ns := strings.TrimSpace(profile.HelmNamespace); ns != "" {
+		args = append(args, "--namespace", ns)
+	}
+	if profile.EncryptedFile != "" {
+		args = append(args, "--values", profile.EncryptedFile)
+	}
+	if profile.Passphrase != "" {
+		args = append(args, "--values-passphrase", profile.Passphrase)
+	}
+	if strings.TrimSpace(opts.ChartReference) != "" {
+		args = append(args, opts.ChartReference)
+	}
+	if strings.TrimSpace(opts.BundlePath) != "" {
+		args = append(args, "--bundle-path", opts.BundlePath)
+	}
+	return args
+}
+
+func telemetryEmitterDefault(w io.Writer) (*telemetry.Emitter, error) {
 	return telemetry.NewEmitter(w)
 }

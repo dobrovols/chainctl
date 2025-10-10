@@ -15,7 +15,9 @@ import (
 
 	"github.com/dobrovols/chainctl/internal/config"
 	"github.com/dobrovols/chainctl/internal/validation"
+	"github.com/dobrovols/chainctl/pkg/bootstrap"
 	"github.com/dobrovols/chainctl/pkg/bundle"
+	"github.com/dobrovols/chainctl/pkg/helm"
 	"github.com/dobrovols/chainctl/pkg/telemetry"
 )
 
@@ -48,7 +50,7 @@ type InstallDeps struct {
 	BundleLoader        func(string, string) (*bundle.Bundle, error)
 	Bootstrapper        Bootstrapper
 	HelmInstaller       HelmInstaller
-	TelemetryEmitter    func(io.Writer) *telemetry.Emitter
+	TelemetryEmitter    func(io.Writer) (*telemetry.Emitter, error)
 	ClusterValidator    func(*rest.Config) error
 	ClusterConfigLoader func(*config.Profile) (*rest.Config, error)
 }
@@ -118,7 +120,7 @@ func RunInstallForTest(cmd *cobra.Command, opts InstallOptions, deps InstallDeps
 	return runInstall(cmd, opts, deps)
 }
 
-func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) error {
+func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err error) {
 	if strings.TrimSpace(opts.ValuesFile) == "" {
 		return errValuesFileRequired
 	}
@@ -152,7 +154,39 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) error
 	if emitter == nil {
 		emitter = telemetry.NewEmitter
 	}
-	tel := emitter(cmd.OutOrStdout())
+	tel, err := emitter(cmd.OutOrStdout())
+	if err != nil {
+		return fmt.Errorf("initialize structured logging: %w", err)
+	}
+	logger := tel.StructuredLogger()
+	if logger == nil {
+		return fmt.Errorf("structured logger unavailable")
+	}
+	bootstrapHasLogging := false
+	if orch, ok := deps.Bootstrapper.(*bootstrap.Orchestrator); ok {
+		orch.WithLogging(logger)
+		bootstrapHasLogging = true
+	}
+	helmHasLogging := false
+	if installer, ok := deps.HelmInstaller.(*helm.Installer); ok {
+		deps.HelmInstaller = installer.WithLogger(logger)
+		helmHasLogging = true
+	}
+
+	commandMetadata := map[string]string{
+		"mode":      string(profile.Mode),
+		"namespace": profile.HelmNamespace,
+		"release":   profile.HelmRelease,
+	}
+	if profile.Airgapped {
+		commandMetadata["bundlePath"] = profile.BundlePath
+	}
+	logWorkflowStart(logger, stepInstall, commandMetadata)
+	defer func() {
+		if err != nil {
+			logWorkflowFailure(logger, stepInstall, commandMetadata, err)
+		}
+	}()
 
 	if profile.Mode == config.ModeReuse {
 		loader := deps.ClusterConfigLoader
@@ -179,7 +213,15 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) error
 		return err
 	}
 
+	helmArgsDryRun := buildHelmCommandArgs(profile, opts, true)
 	if opts.DryRun {
+		if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+			logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, commandMetadata, nil)
+		}
+		if !helmHasLogging {
+			logCommandEntry(logger, stepHelm, helmArgsDryRun, "", telemetry.SeverityInfo, commandMetadata, nil)
+		}
+		logWorkflowSuccess(logger, stepInstall, commandMetadata)
 		return emitOutput(cmd, profile, bundleInstance, true, opts.Output)
 	}
 
@@ -189,15 +231,29 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) error
 		}
 		return nil
 	}); err != nil {
+		if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+			logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), err.Error(), telemetry.SeverityError, commandMetadata, err)
+		}
 		return err
 	}
+	if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+		logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, commandMetadata, nil)
+	}
 
+	helmArgs := buildHelmCommandArgs(profile, opts, false)
 	if err := tel.EmitPhase(telemetry.PhaseHelm, map[string]string{"mode": string(profile.Mode)}, func() error {
 		return deps.HelmInstaller.Install(profile, bundleInstance)
 	}); err != nil {
+		if !helmHasLogging {
+			logCommandEntry(logger, stepHelm, helmArgs, err.Error(), telemetry.SeverityError, commandMetadata, err)
+		}
 		return err
 	}
+	if !helmHasLogging {
+		logCommandEntry(logger, stepHelm, helmArgs, "", telemetry.SeverityInfo, commandMetadata, nil)
+	}
 
+	logWorkflowSuccess(logger, stepInstall, commandMetadata)
 	return emitOutput(cmd, profile, bundleInstance, false, opts.Output)
 }
 
@@ -272,4 +328,30 @@ func emitOutput(cmd *cobra.Command, profile *config.Profile, b *bundle.Bundle, d
 	default:
 		return errUnsupportedOutput
 	}
+}
+
+func buildHelmCommandArgs(profile *config.Profile, opts InstallOptions, dryRun bool) []string {
+	args := []string{"helm", "upgrade", profile.HelmRelease}
+	if ns := strings.TrimSpace(profile.HelmNamespace); ns != "" {
+		args = append(args, "--namespace", ns)
+	}
+	args = append(args, "--values", profile.EncryptedFile)
+	if profile.Airgapped && strings.TrimSpace(opts.BundlePath) != "" {
+		args = append(args, "--bundle-path", opts.BundlePath)
+	}
+	if strings.TrimSpace(profile.Passphrase) != "" {
+		args = append(args, "--values-passphrase", profile.Passphrase)
+	}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+	return args
+}
+
+func buildBootstrapCommandArgs(profile *config.Profile) []string {
+	args := []string{"k3s-install"}
+	if strings.TrimSpace(profile.Passphrase) != "" {
+		args = append(args, "--values-passphrase", profile.Passphrase)
+	}
+	return args
 }

@@ -58,7 +58,7 @@ func (s *stateStub) Write(rec pkgstate.Record, o pkgstate.Overrides) (string, er
 	return s.path, nil
 }
 
-func telemetryNoop(w io.Writer) *telemetry.Emitter {
+func telemetryNoop(w io.Writer) (*telemetry.Emitter, error) {
 	return telemetry.NewEmitter(w)
 }
 
