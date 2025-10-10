@@ -22,6 +22,9 @@ var (
 	ErrPathOutsideBundle = errors.New("bundle entry escapes extraction directory")
 )
 
+// ManifestFileName is the expected filename for the manifest inside a bundle archive.
+const ManifestFileName = "bundle.yaml"
+
 // Manifest describes the structure of the bundle.
 type Manifest struct {
 	Version   string            `yaml:"version"`
@@ -176,7 +179,7 @@ func extractEntry(tr *tar.Reader, hdr *tar.Header, root string, manifestBytes *[
 		if _, err := io.Copy(buf, tr); err != nil {
 			return fmt.Errorf("copy tar entry %s: %w", hdr.Name, err)
 		}
-		if hdr.Name == "bundle.yaml" {
+		if hdr.Name == ManifestFileName {
 			*manifestBytes = buf.Bytes()
 			return nil
 		}

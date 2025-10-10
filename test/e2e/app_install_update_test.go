@@ -141,7 +141,7 @@ func createQuickstartBundle(t *testing.T, bundlePath string) {
 	}
 
 	writeTarDir(t, tw, "charts/")
-	writeTarFile(t, tw, "bundle.yaml", manifestBytes)
+	writeTarFile(t, tw, bundle.ManifestFileName, manifestBytes)
 	for name, data := range payload {
 		writeTarFile(t, tw, name, data)
 	}
