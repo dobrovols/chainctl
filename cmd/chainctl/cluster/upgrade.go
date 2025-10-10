@@ -32,7 +32,7 @@ type UpgradePlanner interface {
 // UpgradeDeps bundles dependencies for the upgrade command.
 type UpgradeDeps struct {
 	Planner          UpgradePlanner
-	TelemetryEmitter func(io.Writer) *telemetry.Emitter
+	TelemetryEmitter func(io.Writer) (*telemetry.Emitter, error)
 }
 
 var (
@@ -78,7 +78,7 @@ func RunClusterUpgradeForTest(cmd *cobra.Command, opts UpgradeOptions, deps Upgr
 	return runClusterUpgrade(cmd, opts, deps)
 }
 
-func runClusterUpgrade(cmd *cobra.Command, opts UpgradeOptions, deps UpgradeDeps) error {
+func runClusterUpgrade(cmd *cobra.Command, opts UpgradeOptions, deps UpgradeDeps) (err error) {
 	if strings.TrimSpace(opts.ClusterEndpoint) == "" {
 		return errClusterEndpointRequired
 	}
@@ -106,14 +106,44 @@ func runClusterUpgrade(cmd *cobra.Command, opts UpgradeOptions, deps UpgradeDeps
 		planner = upgrade.NewPlanner(nil)
 	}
 
-	tel := emitter(cmd.OutOrStdout())
+	tel, err := emitter(cmd.OutOrStdout())
+	if err != nil {
+		return fmt.Errorf("initialize structured logging: %w", err)
+	}
+	logger := tel.StructuredLogger()
+	if logger == nil {
+		return fmt.Errorf("structured logger unavailable")
+	}
+	workflowMetadata := map[string]string{
+		"cluster": profile.ClusterEndpoint,
+		"version": opts.K3sVersion,
+	}
+	logWorkflowStart(logger, stepUpgrade, workflowMetadata)
+	defer func() {
+		if err != nil {
+			logWorkflowFailure(logger, stepUpgrade, workflowMetadata, err)
+		}
+	}()
 
+	planMetadata := map[string]string{
+		"k3sVersion": opts.K3sVersion,
+	}
+	if opts.ControllerManifest != "" {
+		planMetadata["controllerManifest"] = opts.ControllerManifest
+	}
+	if opts.AirgappedBundle != "" {
+		planMetadata["bundlePath"] = opts.AirgappedBundle
+	}
+	planArgs := buildUpgradePlanArgs(opts)
 	if err := tel.EmitPhase(telemetry.PhaseUpgrade, map[string]string{"version": opts.K3sVersion}, func() error {
 		return planner.PlanUpgrade(profile, plan)
 	}); err != nil {
+		logCommandEntry(logger, stepUpgradePlan, planArgs, err.Error(), telemetry.SeverityError, planMetadata, err)
 		return err
 	}
+	logCommandEntry(logger, stepUpgradePlan, planArgs, "", telemetry.SeverityInfo, planMetadata, nil)
 
+	logWorkflowSuccess(logger, stepUpgrade, workflowMetadata)
 	return emitUpgradeOutput(cmd, profile, plan, opts.Output)
 }
 
@@ -136,4 +166,15 @@ func emitUpgradeOutput(cmd *cobra.Command, profile *config.Profile, plan upgrade
 	default:
 		return errUnsupportedOutput
 	}
+}
+
+func buildUpgradePlanArgs(opts UpgradeOptions) []string {
+	args := []string{"system-upgrade", "plan", "--version", opts.K3sVersion}
+	if strings.TrimSpace(opts.ControllerManifest) != "" {
+		args = append(args, "--controller-manifest", opts.ControllerManifest)
+	}
+	if strings.TrimSpace(opts.AirgappedBundle) != "" {
+		args = append(args, "--bundle-path", opts.AirgappedBundle)
+	}
+	return args
 }

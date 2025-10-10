@@ -45,7 +45,7 @@ func (c contractStateManager) Write(rec pkgstate.Record, overrides pkgstate.Over
 	return c.path, nil
 }
 
-func silentTelemetryEmitter(io.Writer) *telemetry.Emitter {
+func silentTelemetryEmitter(io.Writer) (*telemetry.Emitter, error) {
 	return telemetry.NewEmitter(io.Discard)
 }
 

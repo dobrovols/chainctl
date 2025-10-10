@@ -1,14 +1,18 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"time"
 
+	clilogging "github.com/dobrovols/chainctl/internal/cli/logging"
 	"github.com/dobrovols/chainctl/internal/config"
+	"github.com/dobrovols/chainctl/pkg/telemetry"
 )
 
 // Runner executes bootstrap commands.
@@ -37,6 +41,15 @@ func NewOrchestrator(r Runner, w Waiter) *Orchestrator {
 		w = defaultWaiter{}
 	}
 	return &Orchestrator{runner: r, waiter: w, timeout: 10 * time.Minute}
+}
+
+// WithLogging configures the orchestrator to emit structured command logs using the provided logger.
+func (o *Orchestrator) WithLogging(logger telemetry.StructuredLogger) {
+	if o == nil || logger == nil {
+		return
+	}
+	exec := shellCommandExecutor(os.Stdout, os.Stderr)
+	o.runner = NewLoggingRunner(exec, logger, clilogging.SanitizeCommand, clilogging.SanitizeEnv, clilogging.SanitizeText, 4096)
 }
 
 // Bootstrap executes the k3s bootstrap flow if the profile requests it.
@@ -108,4 +121,41 @@ func envMap(env map[string]string) []string {
 		out = append(out, fmt.Sprintf("%s=%s", k, v))
 	}
 	return out
+}
+
+func shellCommandExecutor(stdout, stderr io.Writer) CommandExecutor {
+	return func(cmd []string, env map[string]string) CommandResult {
+		if len(cmd) == 0 {
+			return CommandResult{Err: fmt.Errorf("no command provided")}
+		}
+
+		outWriter := stdout
+		if outWriter == nil {
+			outWriter = os.Stdout
+		}
+		errWriter := stderr
+		if errWriter == nil {
+			errWriter = os.Stderr
+		}
+
+		command := exec.CommandContext(context.Background(), cmd[0], cmd[1:]...)
+		command.Env = append(command.Env, envMap(env)...)
+		command.Stdout = outWriter
+
+		var stderrBuf bytes.Buffer
+		command.Stderr = io.MultiWriter(errWriter, &stderrBuf)
+
+		err := command.Run()
+		result := CommandResult{Stderr: stderrBuf.String(), Err: err}
+		if err == nil {
+			return result
+		}
+
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		} else {
+			result.ExitCode = 1
+		}
+		return result
+	}
 }

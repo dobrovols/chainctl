@@ -30,7 +30,7 @@ type UpgradeOptions struct {
 type UpgradeDeps struct {
 	Installer        HelmInstaller
 	BundleLoader     func(string, string) (*bundle.Bundle, error)
-	TelemetryEmitter func(io.Writer) *telemetry.Emitter
+	TelemetryEmitter func(io.Writer) (*telemetry.Emitter, error)
 	Resolver         ChartResolver
 	StateManager     StateManager
 }

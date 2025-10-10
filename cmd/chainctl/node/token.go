@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dobrovols/chainctl/pkg/telemetry"
 	"github.com/dobrovols/chainctl/pkg/tokens"
 )
 
@@ -51,7 +52,7 @@ func RunTokenCreateForTest(cmd *cobra.Command, opts TokenCommandOptions, store t
 	return runTokenCreate(cmd, opts, store)
 }
 
-func runTokenCreate(cmd *cobra.Command, opts TokenCommandOptions, store tokenStore) error {
+func runTokenCreate(cmd *cobra.Command, opts TokenCommandOptions, store tokenStore) (err error) {
 	scope, err := parseScope(opts.Role)
 	if err != nil {
 		return err
@@ -61,6 +62,30 @@ func runTokenCreate(cmd *cobra.Command, opts TokenCommandOptions, store tokenSto
 	if err != nil {
 		return fmt.Errorf("invalid ttl: %w", err)
 	}
+
+	emitter, emitErr := telemetry.NewEmitter(cmd.OutOrStdout())
+	if emitErr != nil {
+		return fmt.Errorf("initialize structured logging: %w", emitErr)
+	}
+	logger := emitter.StructuredLogger()
+	if logger == nil {
+		return fmt.Errorf("structured logger unavailable")
+	}
+
+	metadata := map[string]string{
+		"role": string(scope),
+		"ttl":  ttl.String(),
+	}
+	if opts.Description != "" {
+		metadata["description"] = opts.Description
+	}
+
+	logWorkflowStart(logger, stepTokenCreate, metadata)
+	defer func() {
+		if err != nil {
+			logWorkflowFailure(logger, stepTokenCreate, metadata, err)
+		}
+	}()
 
 	created, err := store.Create(tokens.CreateOptions{
 		Scope:       scope,
@@ -83,16 +108,20 @@ func runTokenCreate(cmd *cobra.Command, opts TokenCommandOptions, store tokenSto
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(payload)
+		if encodeErr := enc.Encode(payload); encodeErr != nil {
+			return encodeErr
+		}
 	case "text":
 		fmt.Fprintf(cmd.OutOrStdout(), "Token: %s\nExpiry: %s\nScope: %s\n", created.Token, created.ExpiresAt.Format(time.RFC3339), created.Scope)
 		if created.Description != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "Description: %s\n", created.Description)
 		}
-		return nil
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
 	}
+
+	logWorkflowSuccess(logger, stepTokenCreate, metadata)
+	return nil
 }
 
 var errInvalidRole = errors.New("role must be worker or control-plane")

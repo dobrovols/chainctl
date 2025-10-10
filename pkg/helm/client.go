@@ -3,6 +3,7 @@ package helm
 import (
 	"github.com/dobrovols/chainctl/internal/config"
 	"github.com/dobrovols/chainctl/pkg/bundle"
+	"github.com/dobrovols/chainctl/pkg/telemetry"
 )
 
 // Executor abstracts helm upgrade execution.
@@ -21,6 +22,14 @@ func NewInstaller(exec Executor) *Installer {
 		exec = noopExecutor{}
 	}
 	return &Installer{exec: exec}
+}
+
+// WithLogger returns a new installer that emits structured logs via the provided logger.
+func (i *Installer) WithLogger(logger telemetry.StructuredLogger) *Installer {
+	if i == nil || logger == nil {
+		return i
+	}
+	return &Installer{exec: NewLoggingExecutor(i.exec, logger)}
 }
 
 // Install applies the Helm release according to the profile.

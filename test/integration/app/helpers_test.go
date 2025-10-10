@@ -12,6 +12,6 @@ type noopInstaller struct{}
 
 func (noopInstaller) Install(*config.Profile, *bundle.Bundle) error { return nil }
 
-func telemetrySilentEmitter(io.Writer) *telemetry.Emitter {
+func telemetrySilentEmitter(io.Writer) (*telemetry.Emitter, error) {
 	return telemetry.NewEmitter(io.Discard)
 }

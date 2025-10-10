@@ -56,7 +56,7 @@ func (f *fakeHelm) Install(p *config.Profile, b *bundle.Bundle) error {
 	return f.err
 }
 
-func telemetryStub(w io.Writer) *telemetry.Emitter {
+func telemetryStub(w io.Writer) (*telemetry.Emitter, error) {
 	return telemetry.NewEmitter(w)
 }
 
