@@ -13,17 +13,25 @@ import (
 	"github.com/dobrovols/chainctl/pkg/bundle"
 )
 
+const (
+	testChartPath       = "charts/app.tgz"
+	testChartContent    = "dummy chart"
+	testManifestVersion = "1.0.0"
+	testBundleFileName  = "bundle.tar"
+	testCacheDirName    = "cache"
+	testAssetPath       = "assets/data.txt"
+	testAssetDir        = "assets"
+)
+
 func TestLoadBundleSuccess(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
-	cacheDir := filepath.Join(tempDir, "cache")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
 	payload := map[string][]byte{
-		"charts/app.tgz": []byte("dummy chart"),
+		testChartPath: []byte(testChartContent),
 	}
 
 	manifest := bundle.Manifest{
-		Version:   "1.0.0",
+		Version:   testManifestVersion,
 		Checksums: map[string]string{},
 	}
 	for name, data := range payload {
@@ -38,33 +46,31 @@ func TestLoadBundleSuccess(t *testing.T) {
 		t.Fatalf("load bundle: %v", err)
 	}
 
-	if result.Manifest.Version != "1.0.0" {
+	if result.Manifest.Version != testManifestVersion {
 		t.Fatalf("expected version 1.0.0, got %s", result.Manifest.Version)
 	}
 
-	chartPath := result.AssetPath("charts/app.tgz")
+	chartPath := result.AssetPath(testChartPath)
 	data, err := os.ReadFile(chartPath)
 	if err != nil {
 		t.Fatalf("read extracted file: %v", err)
 	}
-	if string(data) != "dummy chart" {
+	if string(data) != testChartContent {
 		t.Fatalf("unexpected file content: %s", string(data))
 	}
 }
 
 func TestLoadBundleChecksumMismatch(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
-	cacheDir := filepath.Join(tempDir, "cache")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
 	payload := map[string][]byte{
-		"charts/app.tgz": []byte("dummy chart"),
+		testChartPath: []byte(testChartContent),
 	}
 
 	manifest := bundle.Manifest{
-		Version: "1.0.0",
+		Version: testManifestVersion,
 		Checksums: map[string]string{
-			"charts/app.tgz": "deadbeef",
+			testChartPath: "deadbeef",
 		},
 	}
 
@@ -80,52 +86,36 @@ func TestLoadBundleChecksumMismatch(t *testing.T) {
 }
 
 func TestLoadBundleManifestMissing(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
-	file, err := os.Create(bundlePath)
-	if err != nil {
-		t.Fatalf("create tar: %v", err)
-	}
-	defer file.Close()
+	withTarWriter(t, bundlePath, func(tw *tar.Writer) {
+		writeTarFile(t, tw, testChartPath, []byte("dummy"))
+	})
 
-	tw := tar.NewWriter(file)
-	defer tw.Close()
-
-	writeTarFile(t, tw, "charts/app.tgz", []byte("dummy"))
-
-	if _, err := bundle.Load(bundlePath, filepath.Join(tempDir, "cache")); err == nil || !errors.Is(err, bundle.ErrManifestMissing) {
+	if _, err := bundle.Load(bundlePath, cacheDir); err == nil || !errors.Is(err, bundle.ErrManifestMissing) {
 		t.Fatalf("expected manifest missing error, got %v", err)
 	}
 }
 
 func TestLoadBundlePreventsPathEscape(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
 	manifest := bundle.Manifest{
-		Version:   "1.0.0",
+		Version:   testManifestVersion,
 		Checksums: map[string]string{},
 	}
-
-	file, err := os.Create(bundlePath)
-	if err != nil {
-		t.Fatalf("create tar: %v", err)
-	}
-	defer file.Close()
-
-	tw := tar.NewWriter(file)
-	defer tw.Close()
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)
 	}
 
-	writeTarFile(t, tw, "bundle.yaml", manifestBytes)
-	writeTarFile(t, tw, "../escape.txt", []byte("bad"))
+	withTarWriter(t, bundlePath, func(tw *tar.Writer) {
+		writeTarFile(t, tw, bundle.ManifestFileName, manifestBytes)
+		writeTarFile(t, tw, "../escape.txt", []byte("bad"))
+	})
 
-	if _, err := bundle.Load(bundlePath, filepath.Join(tempDir, "cache")); err == nil || !errors.Is(err, bundle.ErrPathOutsideBundle) {
+	if _, err := bundle.Load(bundlePath, cacheDir); err == nil || !errors.Is(err, bundle.ErrPathOutsideBundle) {
 		t.Fatalf("expected path outside bundle error, got %v", err)
 	}
 }
@@ -137,31 +127,21 @@ func TestLoadRequiresTarballPath(t *testing.T) {
 }
 
 func TestLoadInvalidManifest(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
-	file, err := os.Create(bundlePath)
-	if err != nil {
-		t.Fatalf("create tar: %v", err)
-	}
-	defer file.Close()
+	withTarWriter(t, bundlePath, func(tw *tar.Writer) {
+		writeTarFile(t, tw, bundle.ManifestFileName, []byte("not: [valid"))
+	})
 
-	tw := tar.NewWriter(file)
-	defer tw.Close()
-
-	writeTarFile(t, tw, "bundle.yaml", []byte("not: [valid"))
-
-	if _, err := bundle.Load(bundlePath, filepath.Join(tempDir, "cache")); err == nil || !strings.Contains(err.Error(), "parse manifest") {
+	if _, err := bundle.Load(bundlePath, cacheDir); err == nil || !strings.Contains(err.Error(), "parse manifest") {
 		t.Fatalf("expected parse manifest error, got %v", err)
 	}
 }
 
 func TestLoadDefaultsChecksumMap(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
-	cacheDir := filepath.Join(tempDir, "cache")
+	bundlePath, cacheDir := tempBundlePaths(t)
 
-	manifest := bundle.Manifest{Version: "1.0.0"}
+	manifest := bundle.Manifest{Version: testManifestVersion}
 	createBundle(t, bundlePath, manifest, map[string][]byte{})
 
 	result, err := bundle.Load(bundlePath, cacheDir)
@@ -174,50 +154,40 @@ func TestLoadDefaultsChecksumMap(t *testing.T) {
 }
 
 func TestLoadCreatesDirectories(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
-	cacheDir := filepath.Join(tempDir, "cache")
-
-	file, err := os.Create(bundlePath)
-	if err != nil {
-		t.Fatalf("create tar: %v", err)
-	}
-	defer file.Close()
-
-	tw := tar.NewWriter(file)
-	defer tw.Close()
+	bundlePath, cacheDir := tempBundlePaths(t)
 
 	manifest := bundle.Manifest{
-		Version:   "1.0.0",
+		Version:   testManifestVersion,
 		Checksums: map[string]string{},
 	}
 	hash := sha256.Sum256([]byte("payload"))
-	manifest.Checksums["assets/data.txt"] = hex.EncodeToString(hash[:])
+	manifest.Checksums[testAssetPath] = hex.EncodeToString(hash[:])
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)
 	}
 
-	if err := tw.WriteHeader(&tar.Header{Name: "assets/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
-		t.Fatalf("write dir header: %v", err)
-	}
-	writeTarFile(t, tw, "bundle.yaml", manifestBytes)
-	writeTarFile(t, tw, "assets/data.txt", []byte("payload"))
+	withTarWriter(t, bundlePath, func(tw *tar.Writer) {
+		if err := tw.WriteHeader(&tar.Header{Name: testAssetDir + "/", Mode: 0o755, Typeflag: tar.TypeDir}); err != nil {
+			t.Fatalf("write dir header: %v", err)
+		}
+		writeTarFile(t, tw, bundle.ManifestFileName, manifestBytes)
+		writeTarFile(t, tw, testAssetPath, []byte("payload"))
+	})
 
 	result, err := bundle.Load(bundlePath, cacheDir)
 	if err != nil {
 		t.Fatalf("load bundle: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(result.Extracted, "assets")); err != nil {
+	if _, err := os.Stat(filepath.Join(result.Extracted, testAssetDir)); err != nil {
 		t.Fatalf("expected assets directory to exist: %v", err)
 	}
 }
 
 func TestLoadDefaultsCacheRoot(t *testing.T) {
-	tempDir := t.TempDir()
-	bundlePath := filepath.Join(tempDir, "bundle.tar")
+	bundlePath, _ := tempBundlePaths(t)
 
-	manifest := bundle.Manifest{Version: "1.0.0"}
+	manifest := bundle.Manifest{Version: testManifestVersion}
 	createBundle(t, bundlePath, manifest, map[string][]byte{})
 
 	result, err := bundle.Load(bundlePath, "")
@@ -229,28 +199,50 @@ func TestLoadDefaultsCacheRoot(t *testing.T) {
 	}
 }
 
-func createBundle(t *testing.T, path string, manifest bundle.Manifest, payload map[string][]byte) {
+func tempBundlePaths(t *testing.T) (bundlePath, cacheDir string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	return filepath.Join(dir, testBundleFileName), filepath.Join(dir, testCacheDirName)
+}
+
+func withTarWriter(t *testing.T, path string, fn func(*tar.Writer)) {
 	t.Helper()
 
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("create tar: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Fatalf("close tar file: %v", err)
+		}
+	}()
 
 	tw := tar.NewWriter(file)
-	defer tw.Close()
+	defer func() {
+		if err := tw.Close(); err != nil {
+			t.Fatalf("close tar writer: %v", err)
+		}
+	}()
+
+	fn(tw)
+}
+
+func createBundle(t *testing.T, path string, manifest bundle.Manifest, payload map[string][]byte) {
+	t.Helper()
 
 	manifestBytes, err := manifest.Marshal()
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)
 	}
 
-	writeTarFile(t, tw, "bundle.yaml", manifestBytes)
-
-	for name, data := range payload {
-		writeTarFile(t, tw, name, data)
-	}
+	withTarWriter(t, path, func(tw *tar.Writer) {
+		writeTarFile(t, tw, bundle.ManifestFileName, manifestBytes)
+		for name, data := range payload {
+			writeTarFile(t, tw, name, data)
+		}
+	})
 }
 
 func writeTarFile(t *testing.T, tw *tar.Writer, name string, data []byte) {

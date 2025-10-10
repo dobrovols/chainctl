@@ -22,6 +22,9 @@ var (
 	ErrPathOutsideBundle = errors.New("bundle entry escapes extraction directory")
 )
 
+// ManifestFileName is the expected filename for the manifest inside a bundle archive.
+const ManifestFileName = "bundle.yaml"
+
 // Manifest describes the structure of the bundle.
 type Manifest struct {
 	Version   string            `yaml:"version"`
@@ -176,7 +179,7 @@ func extractEntry(tr *tar.Reader, hdr *tar.Header, root string, manifestBytes *[
 		if _, err := io.Copy(buf, tr); err != nil {
 			return fmt.Errorf("copy tar entry %s: %w", hdr.Name, err)
 		}
-		if hdr.Name == "bundle.yaml" {
+		if hdr.Name == ManifestFileName {
 			*manifestBytes = buf.Bytes()
 			return nil
 		}
@@ -208,13 +211,28 @@ func validateChecksums(root string, checksums map[string]string) error {
 }
 
 func safeJoin(root, name string) (string, error) {
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve base path: %w", err)
+	}
+
 	cleaned := filepath.Clean(name)
-	target := filepath.Join(root, cleaned)
-	rel, err := filepath.Rel(root, target)
+	if filepath.IsAbs(cleaned) {
+		return "", ErrPathOutsideBundle
+	}
+	if vol := filepath.VolumeName(cleaned); vol != "" {
+		return "", ErrPathOutsideBundle
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+		return "", ErrPathOutsideBundle
+	}
+
+	target := filepath.Join(base, cleaned)
+	rel, err := filepath.Rel(base, target)
 	if err != nil {
 		return "", err
 	}
-	if strings.HasPrefix(rel, "..") {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", ErrPathOutsideBundle
 	}
 	return target, nil
