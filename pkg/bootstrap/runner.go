@@ -1,13 +1,12 @@
 package bootstrap
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"strconv"
 	"strings"
 
-	"github.com/dobrovols/chainctl/internal/cli/logging"
+	clilogging "github.com/dobrovols/chainctl/internal/cli/logging"
 	"github.com/dobrovols/chainctl/pkg/telemetry"
 )
 
@@ -31,7 +30,7 @@ type LoggingRunner struct {
 	stderrLimit     int
 }
 
-// NewLoggingRunner constructs a LoggingRunner that uses the provided executor and logger.
+// NewLoggingRunner constructs a LoggingRunner that emits structured command logs.
 func NewLoggingRunner(exec CommandExecutor, logger telemetry.StructuredLogger, sanitizeCommand func([]string) string, sanitizeEnv func(map[string]string) map[string]string, sanitizeOutput func(string) string, stderrLimit int) *LoggingRunner {
 	if exec == nil {
 		panic("bootstrap: command executor is required")
@@ -40,13 +39,13 @@ func NewLoggingRunner(exec CommandExecutor, logger telemetry.StructuredLogger, s
 		panic("bootstrap: structured logger is required")
 	}
 	if sanitizeCommand == nil {
-		sanitizeCommand = logging.SanitizeCommand
+		sanitizeCommand = clilogging.SanitizeCommand
 	}
 	if sanitizeEnv == nil {
-		sanitizeEnv = logging.SanitizeEnv
+		sanitizeEnv = clilogging.SanitizeEnv
 	}
 	if sanitizeOutput == nil {
-		sanitizeOutput = func(s string) string { return s }
+		sanitizeOutput = clilogging.SanitizeText
 	}
 	if stderrLimit <= 0 {
 		stderrLimit = 4096
@@ -64,7 +63,7 @@ func NewLoggingRunner(exec CommandExecutor, logger telemetry.StructuredLogger, s
 // Run executes the command and returns an error when the command fails.
 func (l *LoggingRunner) Run(cmd []string, env map[string]string) error {
 	if l == nil {
-		return errors.New("logging runner is nil")
+		return fmt.Errorf("logging runner is nil")
 	}
 	sanitizedCommand := l.sanitizeCommand(cmd)
 	sanitizedEnv := l.sanitizeEnv(env)

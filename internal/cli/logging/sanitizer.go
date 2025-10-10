@@ -104,7 +104,7 @@ func SanitizeEnv(env map[string]string) map[string]string {
 	return out
 }
 
-var sensitivePattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|apikey|privatekey)=([^\s]+)`)
+var sensitivePattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|apikey|privatekey)=([^\s]{1,128})`)
 
 // SanitizeText redacts sensitive key/value pairs inside freeform strings.
 func SanitizeText(text string) string {

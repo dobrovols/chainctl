@@ -98,7 +98,7 @@ func (l *Logger) Emit(entry Entry) error {
 	}
 
 	payload := map[string]any{
-		"timestamp":  time.Now().UTC().Format(time.RFC3339Nano),
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		"category":   string(entry.Category),
 		"message":    entry.Message,
 		"severity":   string(severity),

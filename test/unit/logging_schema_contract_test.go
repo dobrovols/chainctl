@@ -51,6 +51,7 @@ func TestStructuredLogSchemaRejectsMissingFields(t *testing.T) {
 }
 
 func loadSchemaPath(t *testing.T) string {
+	t.Helper()
 	schemaPath := filepath.Join("..", "..", "specs", "003-logging", "contracts", "logging-schema.json")
 	abs, err := filepath.Abs(schemaPath)
 	if err != nil {
