@@ -64,25 +64,12 @@ func (m *Manager) apply(cmd *cobra.Command) error {
 		return nil
 	}
 
-	explicitPath, err := flagSet.GetString(configFlagName)
+	location, err := resolveConfigLocation(flagSet)
 	if err != nil {
-		return fmt.Errorf("read --config flag: %w", err)
+		return err
 	}
-
-	var (
-		location internalconfig.LocationResult
-		locErr   error
-	)
-	if strings.TrimSpace(explicitPath) != "" {
-		location, locErr = internalconfig.LocateConfig(explicitPath)
-	} else {
-		location, locErr = internalconfig.LocateConfig("")
-		if errors.Is(locErr, internalconfig.ErrConfigNotFound) {
-			return nil
-		}
-	}
-	if locErr != nil {
-		return locErr
+	if location == nil {
+		return nil
 	}
 
 	runtime, err := collectRuntimeOverrides(cmd)
@@ -90,13 +77,7 @@ func (m *Manager) apply(cmd *cobra.Command) error {
 		return err
 	}
 
-	profile, err := m.loader.Load(location.Path)
-	if err != nil {
-		return err
-	}
-
-	commandPath := cmd.CommandPath()
-	resolved, err := pkgconfig.ResolveInvocation(profile, commandPath, runtime)
+	resolved, err := m.buildResolvedInvocation(location.Path, cmd, runtime)
 	if err != nil {
 		return err
 	}
@@ -107,17 +88,45 @@ func (m *Manager) apply(cmd *cobra.Command) error {
 
 	storeResolvedInvocation(cmd, resolved)
 
-	outputFormat, _ := flagSet.GetString("output")
-	if outputFormat == "" {
-		outputFormat = pkgconfig.SummaryFormatText
-	} else {
-		outputFormat = strings.ToLower(outputFormat)
-	}
-	if outputFormat != pkgconfig.SummaryFormatText && outputFormat != pkgconfig.SummaryFormatJSON {
-		outputFormat = pkgconfig.SummaryFormatText
+	return emitInvocationSummary(cmd, flagSet, resolved)
+}
+
+func resolveConfigLocation(flagSet *pflag.FlagSet) (*internalconfig.LocationResult, error) {
+	explicitPath, err := flagSet.GetString(configFlagName)
+	if err != nil {
+		return nil, fmt.Errorf("read --config flag: %w", err)
 	}
 
-	summary, err := pkgconfig.FormatSummary(resolved, outputFormat)
+	if strings.TrimSpace(explicitPath) != "" {
+		location, locErr := internalconfig.LocateConfig(explicitPath)
+		if locErr != nil {
+			return nil, locErr
+		}
+		return &location, nil
+	}
+
+	location, err := internalconfig.LocateConfig("")
+	if err != nil {
+		if errors.Is(err, internalconfig.ErrConfigNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &location, nil
+}
+
+func (m *Manager) buildResolvedInvocation(configPath string, cmd *cobra.Command, runtime pkgconfig.FlagSet) (*pkgconfig.ResolvedInvocation, error) {
+	profile, err := m.loader.Load(configPath)
+	if err != nil {
+		return nil, err
+	}
+	commandPath := cmd.CommandPath()
+	return pkgconfig.ResolveInvocation(profile, commandPath, runtime)
+}
+
+func emitInvocationSummary(cmd *cobra.Command, flagSet *pflag.FlagSet, resolved *pkgconfig.ResolvedInvocation) error {
+	format := determineOutputFormat(flagSet)
+	summary, err := pkgconfig.FormatSummary(resolved, format)
 	if err != nil {
 		return err
 	}
@@ -125,35 +134,30 @@ func (m *Manager) apply(cmd *cobra.Command) error {
 	return nil
 }
 
+func determineOutputFormat(flagSet *pflag.FlagSet) string {
+	if flagSet == nil {
+		return pkgconfig.SummaryFormatText
+	}
+	format, _ := flagSet.GetString("output")
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		return pkgconfig.SummaryFormatText
+	}
+	if format != pkgconfig.SummaryFormatText && format != pkgconfig.SummaryFormatJSON {
+		return pkgconfig.SummaryFormatText
+	}
+	return format
+}
+
 func collectRuntimeOverrides(cmd *cobra.Command) (pkgconfig.FlagSet, error) {
 	runtime := pkgconfig.FlagSet{}
 	var firstErr error
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		if !flag.Changed || flag.Name == configFlagName || firstErr != nil {
+		if firstErr != nil || shouldSkipRuntimeFlag(flag) {
 			return
 		}
-		switch flag.Value.Type() {
-		case "bool":
-			val, err := cmd.Flags().GetBool(flag.Name)
-			if err != nil {
-				firstErr = err
-				return
-			}
-			runtime[flag.Name] = pkgconfig.FlagValue{Value: val, Source: pkgconfig.ValueSourceRuntime}
-		case "stringSlice", "stringArray":
-			val, err := cmd.Flags().GetStringSlice(flag.Name)
-			if err != nil {
-				firstErr = err
-				return
-			}
-			runtime[flag.Name] = pkgconfig.FlagValue{Value: append([]string(nil), val...), Source: pkgconfig.ValueSourceRuntime}
-		default:
-			val, err := cmd.Flags().GetString(flag.Name)
-			if err != nil {
-				firstErr = err
-				return
-			}
-			runtime[flag.Name] = pkgconfig.FlagValue{Value: val, Source: pkgconfig.ValueSourceRuntime}
+		if err := captureRuntimeFlag(cmd, flag, runtime); err != nil {
+			firstErr = err
 		}
 	})
 	if firstErr != nil {
@@ -167,39 +171,77 @@ func collectRuntimeOverrides(cmd *cobra.Command) (pkgconfig.FlagSet, error) {
 
 func applyResolvedFlags(cmd *cobra.Command, resolved *pkgconfig.ResolvedInvocation) error {
 	for name, flagValue := range resolved.Flags {
-		if name == configFlagName {
-			continue
-		}
-		flag := cmd.Flags().Lookup(name)
-		if flag == nil {
-			resolved.Warnings = append(resolved.Warnings, fmt.Sprintf("flag %q ignored (not recognised by command)", name))
-			continue
-		}
-		var value string
-		switch flag.Value.Type() {
-		case "bool":
-			boolVal, ok := flagValue.Value.(bool)
-			if !ok {
-				return fmt.Errorf("%w: %s expects boolean", internalconfig.ErrInvalidFlagType, name)
-			}
-			if err := cmd.Flags().Set(name, fmt.Sprintf("%t", boolVal)); err != nil {
-				return fmt.Errorf("apply flag %q: %w", name, err)
-			}
-			continue
-		case "stringSlice", "stringArray":
-			slice, err := toStringSlice(flagValue.Value)
-			if err != nil {
-				return fmt.Errorf("%w: %s expects string list", internalconfig.ErrInvalidFlagType, name)
-			}
-			value = strings.Join(slice, ",")
-		default:
-			value = fmt.Sprint(flagValue.Value)
-		}
-		if err := cmd.Flags().Set(name, value); err != nil {
-			return fmt.Errorf("apply flag %q: %w", name, err)
+		if err := applyResolvedFlag(cmd, resolved, name, flagValue); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func shouldSkipRuntimeFlag(flag *pflag.Flag) bool {
+	return !flag.Changed || flag.Name == configFlagName
+}
+
+func captureRuntimeFlag(cmd *cobra.Command, flag *pflag.Flag, runtime pkgconfig.FlagSet) error {
+	value, err := readRuntimeFlagValue(cmd, flag)
+	if err != nil {
+		return err
+	}
+	runtime[flag.Name] = pkgconfig.FlagValue{Value: value, Source: pkgconfig.ValueSourceRuntime}
+	return nil
+}
+
+func readRuntimeFlagValue(cmd *cobra.Command, flag *pflag.Flag) (any, error) {
+	switch flag.Value.Type() {
+	case "bool":
+		return cmd.Flags().GetBool(flag.Name)
+	case "stringSlice", "stringArray":
+		value, err := cmd.Flags().GetStringSlice(flag.Name)
+		if err != nil {
+			return nil, err
+		}
+		return append([]string(nil), value...), nil
+	default:
+		return cmd.Flags().GetString(flag.Name)
+	}
+}
+
+func applyResolvedFlag(cmd *cobra.Command, resolved *pkgconfig.ResolvedInvocation, name string, flagValue pkgconfig.FlagValue) error {
+	if name == configFlagName {
+		return nil
+	}
+	flag := cmd.Flags().Lookup(name)
+	if flag == nil {
+		resolved.Warnings = append(resolved.Warnings, fmt.Sprintf("flag %q ignored (not recognised by command)", name))
+		return nil
+	}
+	value, err := formatResolvedFlagValue(flag, flagValue.Value, name)
+	if err != nil {
+		return err
+	}
+	if err := cmd.Flags().Set(name, value); err != nil {
+		return fmt.Errorf("apply flag %q: %w", name, err)
+	}
+	return nil
+}
+
+func formatResolvedFlagValue(flag *pflag.Flag, raw any, name string) (string, error) {
+	switch flag.Value.Type() {
+	case "bool":
+		boolVal, ok := raw.(bool)
+		if !ok {
+			return "", fmt.Errorf("%w: %s expects boolean", internalconfig.ErrInvalidFlagType, name)
+		}
+		return fmt.Sprintf("%t", boolVal), nil
+	case "stringSlice", "stringArray":
+		slice, err := toStringSlice(raw)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s expects string list", internalconfig.ErrInvalidFlagType, name)
+		}
+		return strings.Join(slice, ","), nil
+	default:
+		return fmt.Sprint(raw), nil
+	}
 }
 
 func toStringSlice(value any) ([]string, error) {

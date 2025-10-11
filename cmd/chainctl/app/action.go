@@ -82,11 +82,8 @@ func (o UpgradeOptions) shared() sharedOptions {
 func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, action appAction) (err error) {
 	ensureDeps(&deps)
 
-	if strings.TrimSpace(options.ValuesFile) == "" {
-		return errValuesFile
-	}
-	if action == actionUpgrade && strings.TrimSpace(options.ClusterEndpoint) == "" {
-		return errClusterEndpoint
+	if err := validateAppActionInputs(options, action); err != nil {
+		return err
 	}
 
 	profile, err := buildProfileForAction(options, action)
@@ -99,31 +96,13 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 		return err
 	}
 
-	emitter := deps.TelemetryEmitter
-	if emitter == nil {
-		emitter = telemetryEmitterDefault
-	}
-	tel, err := emitter(cmd.ErrOrStderr())
+	tel, logger, err := initAppTelemetry(cmd, deps)
 	if err != nil {
-		return fmt.Errorf("initialize structured logging: %w", err)
-	}
-	logger := tel.StructuredLogger()
-	if logger == nil {
-		return fmt.Errorf("structured logger unavailable")
-	}
-	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
-		declarative.EmitTelemetry(logger, resolved)
+		return err
 	}
 
 	workflowStep := workflowStepName(action)
-	workflowMetadata := map[string]string{
-		"mode":      string(profile.Mode),
-		"namespace": profile.HelmNamespace,
-		"release":   profile.HelmRelease,
-	}
-	if profile.ClusterEndpoint != "" {
-		workflowMetadata["cluster"] = profile.ClusterEndpoint
-	}
+	workflowMetadata := buildWorkflowMetadata(profile)
 	logWorkflowStart(logger, workflowStep, workflowMetadata)
 	defer func() {
 		if err != nil {
@@ -131,43 +110,132 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 		}
 	}()
 
-	ctx := cmd.Context()
-	resolveArgs := buildResolveArgs(options)
-	resolved, err := resolveChartSource(ctx, options, deps)
+	resolved, err := resolveChartWithLogging(cmd.Context(), options, deps, logger, workflowMetadata)
 	if err != nil {
-		resolveMetadata := buildResolveMetadata(nil, options)
-		logCommandEntry(logger, stepHelmResolve, resolveArgs, err.Error(), telemetry.SeverityError, resolveMetadata, err)
 		return err
-	}
-	resolveMetadata := buildResolveMetadata(&resolved.Outcome, options)
-	logCommandEntry(logger, stepHelmResolve, resolveArgs, "", telemetry.SeverityInfo, resolveMetadata, nil)
-	if resolved.Outcome.Source.Type != "" {
-		workflowMetadata["source"] = resolved.Outcome.Source.Type
-	}
-	if resolved.Outcome.Source.Digest != "" {
-		workflowMetadata["digest"] = resolved.Outcome.Source.Digest
 	}
 
 	bundleInstance := resolved.Bundle
-
-	helmHasLogging := false
-	if installer, ok := deps.Installer.(*helm.Installer); ok {
-		deps.Installer = installer.WithLogger(logger)
-		helmHasLogging = true
-	}
+	installer, helmHasLogging := prepareAppInstaller(deps.Installer, logger)
 
 	helmMetadata := buildHelmInstallMetadata(profile, resolved.Outcome)
 	helmArgs := buildHelmInstallArgs(profile, options)
 
+	if err = executeHelmPhase(tel, installer, profile, bundleInstance, helmMetadata, helmArgs, logger, helmHasLogging); err != nil {
+		return err
+	}
+
+	record := buildStateRecord(profile, resolved.Outcome, action, options)
+	statePath, err := persistState(deps.StateManager, record, stateOverrides, statePathHint)
+	if err != nil {
+		return err
+	}
+
+	logWorkflowSuccess(logger, workflowStep, workflowMetadata)
+	return emitOutput(cmd, profile, resolved.Outcome, statePath, options.Output, action, options)
+}
+
+func validateAppActionInputs(options sharedOptions, action appAction) error {
+	if strings.TrimSpace(options.ValuesFile) == "" {
+		return errValuesFile
+	}
+	if action == actionUpgrade && strings.TrimSpace(options.ClusterEndpoint) == "" {
+		return errClusterEndpoint
+	}
+	return nil
+}
+
+func initAppTelemetry(cmd *cobra.Command, deps UpgradeDeps) (*telemetry.Emitter, telemetry.StructuredLogger, error) {
+	emitter := deps.TelemetryEmitter
+	if emitter == nil {
+		emitter = telemetryEmitterDefault
+	}
+
+	tel, err := emitter(cmd.ErrOrStderr())
+	if err != nil {
+		return nil, nil, fmt.Errorf("initialize structured logging: %w", err)
+	}
+
+	logger := tel.StructuredLogger()
+	if logger == nil {
+		return nil, nil, fmt.Errorf("structured logger unavailable")
+	}
+
+	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
+		declarative.EmitTelemetry(logger, resolved)
+	}
+
+	return tel, logger, nil
+}
+
+func buildWorkflowMetadata(profile *config.Profile) map[string]string {
+	metadata := map[string]string{
+		"mode":      string(profile.Mode),
+		"namespace": profile.HelmNamespace,
+		"release":   profile.HelmRelease,
+	}
+	if profile.ClusterEndpoint != "" {
+		metadata["cluster"] = profile.ClusterEndpoint
+	}
+	return metadata
+}
+
+func resolveChartWithLogging(
+	ctx context.Context,
+	options sharedOptions,
+	deps UpgradeDeps,
+	logger telemetry.StructuredLogger,
+	workflowMetadata map[string]string,
+) (resolutionResult, error) {
+	resolved, err := resolveChartSource(ctx, options, deps)
+	resolveArgs := buildResolveArgs(options)
+	if err != nil {
+		resolveMetadata := buildResolveMetadata(nil, options)
+		logCommandEntry(logger, stepHelmResolve, resolveArgs, err.Error(), telemetry.SeverityError, resolveMetadata, err)
+		return resolutionResult{}, err
+	}
+
+	resolveMetadata := buildResolveMetadata(&resolved.Outcome, options)
+	logCommandEntry(logger, stepHelmResolve, resolveArgs, "", telemetry.SeverityInfo, resolveMetadata, nil)
+	updateWorkflowMetadataFromOutcome(workflowMetadata, resolved.Outcome)
+
+	return resolved, nil
+}
+
+func updateWorkflowMetadataFromOutcome(metadata map[string]string, outcome helm.ResolveResult) {
+	if outcome.Source.Type != "" {
+		metadata["source"] = outcome.Source.Type
+	}
+	if outcome.Source.Digest != "" {
+		metadata["digest"] = outcome.Source.Digest
+	}
+}
+
+func prepareAppInstaller(installer HelmInstaller, logger telemetry.StructuredLogger) (HelmInstaller, bool) {
+	if installer == nil {
+		return noopInstaller{}, false
+	}
+	if typed, ok := installer.(*helm.Installer); ok {
+		return typed.WithLogger(logger), true
+	}
+	return installer, false
+}
+
+func executeHelmPhase(
+	tel *telemetry.Emitter,
+	installer HelmInstaller,
+	profile *config.Profile,
+	bundleInstance *bundle.Bundle,
+	helmMetadata map[string]string,
+	helmArgs []string,
+	logger telemetry.StructuredLogger,
+	helmHasLogging bool,
+) error {
 	execute := func() error {
-		installer := deps.Installer
-		if installer == nil {
-			installer = noopInstaller{}
-		}
 		installErr := installer.Install(profile, bundleInstance)
 		if !helmHasLogging {
-			severity := telemetry.SeverityInfo
 			stderr := ""
+			severity := telemetry.SeverityInfo
 			if installErr != nil {
 				severity = telemetry.SeverityError
 				stderr = installErr.Error()
@@ -177,31 +245,33 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 		return installErr
 	}
 
-	if err := tel.EmitPhase(telemetry.PhaseHelm, helmMetadata, execute); err != nil {
-		return err
-	}
+	return tel.EmitPhase(telemetry.PhaseHelm, helmMetadata, execute)
+}
 
-	record := pkgstate.Record{
+func buildStateRecord(profile *config.Profile, outcome helm.ResolveResult, action appAction, opts sharedOptions) pkgstate.Record {
+	return pkgstate.Record{
 		Release:         profile.HelmRelease,
 		Namespace:       profile.HelmNamespace,
-		Chart:           resolved.Outcome.Source,
-		Version:         deriveVersion(options, resolved.Outcome),
+		Chart:           outcome.Source,
+		Version:         deriveVersion(opts, outcome),
 		LastAction:      string(action),
 		ClusterEndpoint: profile.ClusterEndpoint,
 	}
+}
 
-	statePath, writeErr := deps.StateManager.Write(record, stateOverrides)
-	if writeErr != nil {
-		err = fmt.Errorf("state file could not be written: %w", writeErr)
-		return err
+func persistState(manager StateManager, record pkgstate.Record, overrides pkgstate.Overrides, hint string) (string, error) {
+	if manager == nil {
+		return "", fmt.Errorf("state manager unavailable")
 	}
 
+	statePath, err := manager.Write(record, overrides)
+	if err != nil {
+		return "", fmt.Errorf("state file could not be written: %w", err)
+	}
 	if statePath == "" {
-		statePath = statePathHint
+		statePath = hint
 	}
-
-	logWorkflowSuccess(logger, workflowStep, workflowMetadata)
-	return emitOutput(cmd, profile, resolved.Outcome, statePath, options.Output, action, options)
+	return statePath, nil
 }
 
 func buildProfileForAction(opts sharedOptions, action appAction) (*config.Profile, error) {
@@ -228,40 +298,69 @@ func resolveChartSource(ctx context.Context, opts sharedOptions, deps UpgradeDep
 	hasChart := strings.TrimSpace(opts.ChartReference) != ""
 	hasBundle := strings.TrimSpace(opts.BundlePath) != ""
 
+	if err := validateResolveSource(hasChart, hasBundle); err != nil {
+		return resolutionResult{}, err
+	}
+	if hasChart {
+		return resolveFromChart(ctx, opts, deps)
+	}
+	return resolveFromBundle(ctx, opts, deps)
+}
+
+func validateResolveSource(hasChart, hasBundle bool) error {
 	switch {
 	case hasChart && hasBundle:
-		return resolutionResult{}, errConflictingSources
+		return errConflictingSources
 	case !hasChart && !hasBundle:
-		return resolutionResult{}, errMissingSource
-	case hasChart:
-		if deps.Resolver == nil {
-			return resolutionResult{}, errResolverPullerMissing
-		}
-		res, err := deps.Resolver.Resolve(ctx, helm.ResolveOptions{OCIReference: opts.ChartReference})
-		if err != nil {
-			return resolutionResult{}, err
-		}
-		return resolutionResult{Outcome: res}, nil
+		return errMissingSource
 	default:
-		if deps.Resolver != nil {
-			res, err := deps.Resolver.Resolve(ctx, helm.ResolveOptions{BundlePath: opts.BundlePath, BundleCacheDir: filepath.Dir(opts.BundlePath)})
-			if err == nil && res.Bundle != nil {
-				return resolutionResult{Outcome: res, Bundle: res.Bundle}, nil
-			}
-		}
-		loader := deps.BundleLoader
-		if loader == nil {
-			loader = bundle.Load
-		}
-		bundleInst, err := loader(opts.BundlePath, filepath.Dir(opts.BundlePath))
-		if err != nil {
-			return resolutionResult{}, err
-		}
-		return resolutionResult{
-			Outcome: helm.ResolveResult{Source: pkgstate.ChartSource{Type: "bundle", Reference: opts.BundlePath}},
-			Bundle:  bundleInst,
-		}, nil
+		return nil
 	}
+}
+
+func resolveFromChart(ctx context.Context, opts sharedOptions, deps UpgradeDeps) (resolutionResult, error) {
+	if deps.Resolver == nil {
+		return resolutionResult{}, errResolverPullerMissing
+	}
+
+	res, err := deps.Resolver.Resolve(ctx, helm.ResolveOptions{OCIReference: opts.ChartReference})
+	if err != nil {
+		return resolutionResult{}, err
+	}
+
+	return resolutionResult{Outcome: res}, nil
+}
+
+func resolveFromBundle(ctx context.Context, opts sharedOptions, deps UpgradeDeps) (resolutionResult, error) {
+	if deps.Resolver != nil {
+		res, err := deps.Resolver.Resolve(ctx, helm.ResolveOptions{
+			BundlePath:     opts.BundlePath,
+			BundleCacheDir: filepath.Dir(opts.BundlePath),
+		})
+		if err == nil && res.Bundle != nil {
+			return resolutionResult{Outcome: res, Bundle: res.Bundle}, nil
+		}
+	}
+
+	loader := deps.BundleLoader
+	if loader == nil {
+		loader = bundle.Load
+	}
+
+	bundleInst, err := loader(opts.BundlePath, filepath.Dir(opts.BundlePath))
+	if err != nil {
+		return resolutionResult{}, err
+	}
+
+	return resolutionResult{
+		Outcome: helm.ResolveResult{
+			Source: pkgstate.ChartSource{
+				Type:      "bundle",
+				Reference: opts.BundlePath,
+			},
+		},
+		Bundle: bundleInst,
+	}, nil
 }
 
 func resolveStateOverrides(opts sharedOptions) (pkgstate.Overrides, string, error) {

@@ -123,8 +123,8 @@ func RunInstallForTest(cmd *cobra.Command, opts InstallOptions, deps InstallDeps
 }
 
 func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err error) {
-	if strings.TrimSpace(opts.ValuesFile) == "" {
-		return errValuesFileRequired
+	if err := validateInstallOptions(opts); err != nil {
+		return err
 	}
 
 	profile, err := buildProfile(opts)
@@ -132,60 +132,19 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err 
 		return err
 	}
 
-	if opts.Airgapped && strings.TrimSpace(opts.BundlePath) == "" {
-		return errBundleRequired
+	if err := runPreflightValidation(selectInspector(deps)); err != nil {
+		return err
 	}
 
-	inspector := deps.Inspector
-	if inspector == nil {
-		inspector = validation.DefaultInspector{}
-	}
-
-	hostResult := validation.ValidateHost(validation.HostConfig{
-		RequireSudo:   true,
-		MinCPU:        2,
-		MinMemoryGiB:  4,
-		KernelModules: []string{"br_netfilter", "overlay"},
-	}, inspector)
-
-	if !hostResult.Passed {
-		return fmt.Errorf("preflight failed: %s", strings.Join(hostResult.Issues, "; "))
-	}
-
-	emitter := deps.TelemetryEmitter
-	if emitter == nil {
-		emitter = telemetry.NewEmitter
-	}
-	tel, err := emitter(cmd.OutOrStdout())
+	tel, logger, err := initInstallTelemetry(cmd, deps)
 	if err != nil {
-		return fmt.Errorf("initialize structured logging: %w", err)
-	}
-	logger := tel.StructuredLogger()
-	if logger == nil {
-		return fmt.Errorf("structured logger unavailable")
-	}
-	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
-		declarative.EmitTelemetry(logger, resolved)
-	}
-	bootstrapHasLogging := false
-	if orch, ok := deps.Bootstrapper.(*bootstrap.Orchestrator); ok {
-		orch.WithLogging(logger)
-		bootstrapHasLogging = true
-	}
-	helmHasLogging := false
-	if installer, ok := deps.HelmInstaller.(*helm.Installer); ok {
-		deps.HelmInstaller = installer.WithLogger(logger)
-		helmHasLogging = true
+		return err
 	}
 
-	commandMetadata := map[string]string{
-		"mode":      string(profile.Mode),
-		"namespace": profile.HelmNamespace,
-		"release":   profile.HelmRelease,
-	}
-	if profile.Airgapped {
-		commandMetadata["bundlePath"] = profile.BundlePath
-	}
+	bootstrapper, bootstrapHasLogging := configureBootstrapper(deps.Bootstrapper, logger)
+	helmInstaller, helmHasLogging := configureHelmInstaller(deps.HelmInstaller, logger)
+
+	commandMetadata := buildInstallMetadata(profile)
 	logWorkflowStart(logger, stepInstall, commandMetadata)
 	defer func() {
 		if err != nil {
@@ -193,24 +152,8 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err 
 		}
 	}()
 
-	if profile.Mode == config.ModeReuse {
-		loader := deps.ClusterConfigLoader
-		if loader == nil {
-			loader = loadClusterConfig
-		}
-		cfg, err := loader(profile)
-		if err != nil {
-			return fmt.Errorf("load cluster config: %w", err)
-		}
-		if cfg != nil {
-			validator := deps.ClusterValidator
-			if validator == nil {
-				validator = validation.ValidateCluster
-			}
-			if err := validator(cfg); err != nil {
-				return fmt.Errorf("cluster validation failed: %w", err)
-			}
-		}
+	if err = validateExistingCluster(profile, deps); err != nil {
+		return err
 	}
 
 	bundleInstance, err := prepareBundle(profile, opts, deps)
@@ -220,46 +163,208 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err 
 
 	helmArgsDryRun := buildHelmCommandArgs(profile, opts, true)
 	if opts.DryRun {
-		if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
-			logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, commandMetadata, nil)
-		}
-		if !helmHasLogging {
-			logCommandEntry(logger, stepHelm, helmArgsDryRun, "", telemetry.SeverityInfo, commandMetadata, nil)
-		}
-		logWorkflowSuccess(logger, stepInstall, commandMetadata)
-		return emitOutput(cmd, profile, bundleInstance, true, opts.Output)
+		return handleInstallDryRun(cmd, profile, bundleInstance, opts, logger, commandMetadata, helmArgsDryRun, bootstrapHasLogging, helmHasLogging)
 	}
 
-	if err := tel.EmitPhase(telemetry.PhaseBootstrap, map[string]string{"mode": string(profile.Mode)}, func() error {
-		if profile.Mode == config.ModeBootstrap {
-			return deps.Bootstrapper.Bootstrap(profile)
-		}
-		return nil
-	}); err != nil {
-		if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
-			logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), err.Error(), telemetry.SeverityError, commandMetadata, err)
-		}
+	if err = executeBootstrapPhase(tel, profile, bootstrapper, logger, commandMetadata, bootstrapHasLogging); err != nil {
 		return err
-	}
-	if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
-		logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, commandMetadata, nil)
 	}
 
 	helmArgs := buildHelmCommandArgs(profile, opts, false)
-	if err := tel.EmitPhase(telemetry.PhaseHelm, map[string]string{"mode": string(profile.Mode)}, func() error {
-		return deps.HelmInstaller.Install(profile, bundleInstance)
-	}); err != nil {
-		if !helmHasLogging {
-			logCommandEntry(logger, stepHelm, helmArgs, err.Error(), telemetry.SeverityError, commandMetadata, err)
-		}
+	if err = executeInstallHelmPhase(tel, helmInstaller, profile, bundleInstance, logger, commandMetadata, helmArgs, helmHasLogging); err != nil {
 		return err
-	}
-	if !helmHasLogging {
-		logCommandEntry(logger, stepHelm, helmArgs, "", telemetry.SeverityInfo, commandMetadata, nil)
 	}
 
 	logWorkflowSuccess(logger, stepInstall, commandMetadata)
 	return emitOutput(cmd, profile, bundleInstance, false, opts.Output)
+}
+
+func validateInstallOptions(opts InstallOptions) error {
+	if strings.TrimSpace(opts.ValuesFile) == "" {
+		return errValuesFileRequired
+	}
+	return nil
+}
+
+func selectInspector(deps InstallDeps) validation.SystemInspector {
+	if deps.Inspector == nil {
+		return validation.DefaultInspector{}
+	}
+	return deps.Inspector
+}
+
+func runPreflightValidation(inspector validation.SystemInspector) error {
+	hostResult := validation.ValidateHost(validation.HostConfig{
+		RequireSudo:   true,
+		MinCPU:        2,
+		MinMemoryGiB:  4,
+		KernelModules: []string{"br_netfilter", "overlay"},
+	}, inspector)
+
+	if hostResult.Passed {
+		return nil
+	}
+
+	return fmt.Errorf("preflight failed: %s", strings.Join(hostResult.Issues, "; "))
+}
+
+func initInstallTelemetry(cmd *cobra.Command, deps InstallDeps) (*telemetry.Emitter, telemetry.StructuredLogger, error) {
+	emitter := deps.TelemetryEmitter
+	if emitter == nil {
+		emitter = telemetry.NewEmitter
+	}
+
+	tel, err := emitter(cmd.OutOrStdout())
+	if err != nil {
+		return nil, nil, fmt.Errorf("initialize structured logging: %w", err)
+	}
+
+	logger := tel.StructuredLogger()
+	if logger == nil {
+		return nil, nil, fmt.Errorf("structured logger unavailable")
+	}
+
+	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
+		declarative.EmitTelemetry(logger, resolved)
+	}
+
+	return tel, logger, nil
+}
+
+func configureBootstrapper(bootstrapper Bootstrapper, logger telemetry.StructuredLogger) (Bootstrapper, bool) {
+	if bootstrapper == nil {
+		return noopBootstrap{}, false
+	}
+	if orch, ok := bootstrapper.(*bootstrap.Orchestrator); ok {
+		orch.WithLogging(logger)
+		return bootstrapper, true
+	}
+	return bootstrapper, false
+}
+
+func configureHelmInstaller(installer HelmInstaller, logger telemetry.StructuredLogger) (HelmInstaller, bool) {
+	if installer == nil {
+		return noopHelm{}, false
+	}
+	if typed, ok := installer.(*helm.Installer); ok {
+		return typed.WithLogger(logger), true
+	}
+	return installer, false
+}
+
+func buildInstallMetadata(profile *config.Profile) map[string]string {
+	metadata := map[string]string{
+		"mode":      string(profile.Mode),
+		"namespace": profile.HelmNamespace,
+		"release":   profile.HelmRelease,
+	}
+	if profile.Airgapped {
+		metadata["bundlePath"] = profile.BundlePath
+	}
+	return metadata
+}
+
+func validateExistingCluster(profile *config.Profile, deps InstallDeps) error {
+	if profile.Mode != config.ModeReuse {
+		return nil
+	}
+
+	loader := deps.ClusterConfigLoader
+	if loader == nil {
+		loader = loadClusterConfig
+	}
+
+	cfg, err := loader(profile)
+	if err != nil {
+		return fmt.Errorf("load cluster config: %w", err)
+	}
+	if cfg == nil {
+		return nil
+	}
+
+	validator := deps.ClusterValidator
+	if validator == nil {
+		validator = validation.ValidateCluster
+	}
+	if err := validator(cfg); err != nil {
+		return fmt.Errorf("cluster validation failed: %w", err)
+	}
+
+	return nil
+}
+
+func handleInstallDryRun(
+	cmd *cobra.Command,
+	profile *config.Profile,
+	bundleInstance *bundle.Bundle,
+	opts InstallOptions,
+	logger telemetry.StructuredLogger,
+	metadata map[string]string,
+	helmArgs []string,
+	bootstrapHasLogging bool,
+	helmHasLogging bool,
+) error {
+	if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+		logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, metadata, nil)
+	}
+	if !helmHasLogging {
+		logCommandEntry(logger, stepHelm, helmArgs, "", telemetry.SeverityInfo, metadata, nil)
+	}
+	logWorkflowSuccess(logger, stepInstall, metadata)
+	return emitOutput(cmd, profile, bundleInstance, true, opts.Output)
+}
+
+func executeBootstrapPhase(
+	tel *telemetry.Emitter,
+	profile *config.Profile,
+	bootstrapper Bootstrapper,
+	logger telemetry.StructuredLogger,
+	metadata map[string]string,
+	bootstrapHasLogging bool,
+) error {
+	phaseMetadata := map[string]string{"mode": string(profile.Mode)}
+	err := tel.EmitPhase(telemetry.PhaseBootstrap, phaseMetadata, func() error {
+		if profile.Mode != config.ModeBootstrap {
+			return nil
+		}
+		return bootstrapper.Bootstrap(profile)
+	})
+	if err != nil {
+		if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+			logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), err.Error(), telemetry.SeverityError, metadata, err)
+		}
+		return err
+	}
+	if profile.Mode == config.ModeBootstrap && !bootstrapHasLogging {
+		logCommandEntry(logger, stepBootstrap, buildBootstrapCommandArgs(profile), "", telemetry.SeverityInfo, metadata, nil)
+	}
+	return nil
+}
+
+func executeInstallHelmPhase(
+	tel *telemetry.Emitter,
+	installer HelmInstaller,
+	profile *config.Profile,
+	bundleInstance *bundle.Bundle,
+	logger telemetry.StructuredLogger,
+	metadata map[string]string,
+	helmArgs []string,
+	helmHasLogging bool,
+) error {
+	phaseMetadata := map[string]string{"mode": string(profile.Mode)}
+	err := tel.EmitPhase(telemetry.PhaseHelm, phaseMetadata, func() error {
+		return installer.Install(profile, bundleInstance)
+	})
+	if err != nil {
+		if !helmHasLogging {
+			logCommandEntry(logger, stepHelm, helmArgs, err.Error(), telemetry.SeverityError, metadata, err)
+		}
+		return err
+	}
+	if !helmHasLogging {
+		logCommandEntry(logger, stepHelm, helmArgs, "", telemetry.SeverityInfo, metadata, nil)
+	}
+	return nil
 }
 
 func prepareBundle(profile *config.Profile, opts InstallOptions, deps InstallDeps) (*bundle.Bundle, error) {

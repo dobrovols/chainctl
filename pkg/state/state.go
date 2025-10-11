@@ -85,58 +85,79 @@ func (m *Manager) Write(record Record, overrides Overrides) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	record = ensureTimestamp(record)
 
+	dir := filepath.Dir(path)
+	if err := m.ensureDirectory(dir); err != nil {
+		return "", err
+	}
+
+	if err := m.writeStateFile(dir, path, record); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func ensureTimestamp(record Record) Record {
 	if record.Timestamp == "" {
 		record.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
+	return record
+}
 
-	dir := filepath.Dir(path)
-	created := false
-	if _, statErr := os.Stat(dir); statErr != nil {
-		if !errors.Is(statErr, os.ErrNotExist) {
-			return "", fmt.Errorf("%w: %w", errWriteFailed, statErr)
-		}
-		if err := os.MkdirAll(dir, m.dirPerm); err != nil {
-			return "", fmt.Errorf("%w: %w", errWriteFailed, err)
-		}
-		created = true
+func (m *Manager) ensureDirectory(dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 
-	if created {
-		if err := os.Chmod(dir, m.dirPerm); err != nil {
-			return "", fmt.Errorf("%w: %w", errWriteFailed, err)
-		}
+	if err := os.MkdirAll(dir, m.dirPerm); err != nil {
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
+	if err := os.Chmod(dir, m.dirPerm); err != nil {
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
+	}
+	return nil
+}
 
+func (m *Manager) writeStateFile(dir, path string, record Record) error {
 	tmp, err := os.CreateTemp(dir, "state-*.json")
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 	defer os.Remove(tmp.Name())
 
 	if err := tmp.Chmod(m.filePerm); err != nil {
 		tmp.Close()
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 
-	enc := json.NewEncoder(tmp)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(record); err != nil {
+	if err := encodeJSON(tmp, record); err != nil {
 		tmp.Close()
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return err
 	}
 
 	if err := tmp.Close(); err != nil {
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 
 	if err := os.Chmod(path, m.filePerm); err != nil {
-		return "", fmt.Errorf("%w: %w", errWriteFailed, err)
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
+	return nil
+}
 
-	return path, nil
+func encodeJSON(file *os.File, record Record) error {
+	enc := json.NewEncoder(file)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(record); err != nil {
+		return fmt.Errorf("%w: %w", errWriteFailed, err)
+	}
+	return nil
 }

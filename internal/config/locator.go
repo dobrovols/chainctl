@@ -31,51 +31,87 @@ var ErrConfigNotFound = errors.New("declarative configuration not found")
 // LocateConfig discovers the declarative configuration file following the precedence rules:
 // explicit path → CHAINCTL_CONFIG → ./chainctl.yaml → XDG config → ~/.config/chainctl/config.yaml.
 func LocateConfig(explicitPath string) (LocationResult, error) {
-	if path := strings.TrimSpace(explicitPath); path != "" {
-		clean := filepath.Clean(path)
-		abs, err := toAbsolute(clean)
+	if result, found, err := locateExplicit(explicitPath); err != nil || found {
+		return result, err
+	}
+	if result, found, err := locateEnv(); err != nil || found {
+		return result, err
+	}
+
+	locators := []func() (LocationResult, bool, error){
+		locateWorkingDir,
+		locateXDG,
+		locateHome,
+	}
+	for _, locator := range locators {
+		result, found, err := locator()
 		if err != nil {
 			return LocationResult{}, err
 		}
-		if exists(abs) {
-			return LocationResult{Path: abs, Source: ConfigSourceExplicit}, nil
-		}
-		return LocationResult{}, fmt.Errorf("%w: %s", ErrConfigNotFound, abs)
-	}
-
-	if path, ok := os.LookupEnv("CHAINCTL_CONFIG"); ok && strings.TrimSpace(path) != "" {
-		abs, err := toAbsolute(path)
-		if err != nil {
-			return LocationResult{}, err
-		}
-		if exists(abs) {
-			return LocationResult{Path: abs, Source: ConfigSourceEnv}, nil
-		}
-		return LocationResult{}, fmt.Errorf("%w: %s", ErrConfigNotFound, abs)
-	}
-
-	if wd, err := os.Getwd(); err == nil {
-		path := filepath.Join(wd, "chainctl.yaml")
-		if exists(path) {
-			return LocationResult{Path: path, Source: ConfigSourceWorkingDir}, nil
-		}
-	}
-
-	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
-		path := filepath.Join(xdg, "chainctl", "config.yaml")
-		if exists(path) {
-			return LocationResult{Path: path, Source: ConfigSourceXDG}, nil
-		}
-	}
-
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		path := filepath.Join(home, ".config", "chainctl", "config.yaml")
-		if exists(path) {
-			return LocationResult{Path: path, Source: ConfigSourceHome}, nil
+		if found {
+			return result, nil
 		}
 	}
 
 	return LocationResult{}, ErrConfigNotFound
+}
+
+func locateExplicit(explicitPath string) (LocationResult, bool, error) {
+	path := strings.TrimSpace(explicitPath)
+	if path == "" {
+		return LocationResult{}, false, nil
+	}
+	return resolveCandidate(path, ConfigSourceExplicit, true)
+}
+
+func locateEnv() (LocationResult, bool, error) {
+	value, ok := os.LookupEnv("CHAINCTL_CONFIG")
+	if !ok || strings.TrimSpace(value) == "" {
+		return LocationResult{}, false, nil
+	}
+	return resolveCandidate(value, ConfigSourceEnv, true)
+}
+
+func locateWorkingDir() (LocationResult, bool, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return LocationResult{}, false, nil
+	}
+	candidate := filepath.Join(wd, "chainctl.yaml")
+	return resolveCandidate(candidate, ConfigSourceWorkingDir, false)
+}
+
+func locateXDG() (LocationResult, bool, error) {
+	root := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME"))
+	if root == "" {
+		return LocationResult{}, false, nil
+	}
+	candidate := filepath.Join(root, "chainctl", "config.yaml")
+	return resolveCandidate(candidate, ConfigSourceXDG, false)
+}
+
+func locateHome() (LocationResult, bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return LocationResult{}, false, nil
+	}
+	candidate := filepath.Join(home, ".config", "chainctl", "config.yaml")
+	return resolveCandidate(candidate, ConfigSourceHome, false)
+}
+
+func resolveCandidate(path string, source ConfigSource, errorOnMissing bool) (LocationResult, bool, error) {
+	clean := filepath.Clean(path)
+	abs, err := toAbsolute(clean)
+	if err != nil {
+		return LocationResult{}, false, err
+	}
+	if exists(abs) {
+		return LocationResult{Path: abs, Source: source}, true, nil
+	}
+	if errorOnMissing {
+		return LocationResult{}, false, fmt.Errorf("%w: %s", ErrConfigNotFound, abs)
+	}
+	return LocationResult{}, false, nil
 }
 
 func toAbsolute(path string) (string, error) {
