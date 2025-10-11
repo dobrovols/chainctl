@@ -10,9 +10,14 @@ import (
 	pkgconfig "github.com/dobrovols/chainctl/pkg/config"
 )
 
+const (
+	loaderTestCommand = "chainctl cluster install"
+	loaderTestConfig  = "chainctl.yaml"
+)
+
 func TestLoadProfileParsesYAMLDocument(t *testing.T) {
 	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "chainctl.yaml")
+	path := filepath.Join(tmpDir, loaderTestConfig)
 	writeConfigFile(t, path, `
 metadata:
   name: shared-demo
@@ -63,7 +68,7 @@ commands:
 	if profile.Defaults["namespace"].Value != "demo" {
 		t.Fatalf("expected default namespace demo, got %v", profile.Defaults["namespace"].Value)
 	}
-	install := profile.Commands["chainctl cluster install"]
+	install := profile.Commands[loaderTestCommand]
 	if len(install.Profiles) != 1 || install.Profiles[0] != "staging" {
 		t.Fatalf("expected staging profile reference, got %#v", install.Profiles)
 	}
@@ -77,7 +82,7 @@ commands:
 
 func TestLoadProfileRejectsSecrets(t *testing.T) {
 	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "chainctl.yaml")
+	path := filepath.Join(tmpDir, loaderTestConfig)
 	writeConfigFile(t, path, `
 defaults:
   values-passphrase: super-secret
@@ -89,7 +94,7 @@ commands:
 
 	catalog := fakeCatalog{
 		commands: map[string]map[string]internalconfig.FlagType{
-			"chainctl cluster install": {
+			loaderTestCommand: {
 				"chart":             internalconfig.FlagTypeString,
 				"values-passphrase": internalconfig.FlagTypeString,
 			},
@@ -105,7 +110,7 @@ commands:
 
 func TestLoadProfileRejectsUnknownCommand(t *testing.T) {
 	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "chainctl.yaml")
+	path := filepath.Join(tmpDir, loaderTestConfig)
 	writeConfigFile(t, path, `
 commands:
   chainctl invalid action:
@@ -126,7 +131,7 @@ commands:
 
 func TestLoadProfileRejectsUnknownFlag(t *testing.T) {
 	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "chainctl.yaml")
+	path := filepath.Join(tmpDir, loaderTestConfig)
 	writeConfigFile(t, path, `
 commands:
   chainctl cluster install:
@@ -136,7 +141,7 @@ commands:
 
 	catalog := fakeCatalog{
 		commands: map[string]map[string]internalconfig.FlagType{
-			"chainctl cluster install": {
+			loaderTestCommand: {
 				"chart": internalconfig.FlagTypeString,
 			},
 		},
@@ -146,6 +151,88 @@ commands:
 	_, err := loader.Load(path)
 	if !errors.Is(err, internalconfig.ErrUnknownFlag) {
 		t.Fatalf("expected ErrUnknownFlag, got %v", err)
+	}
+}
+
+func TestCoerceValueParsesBooleanString(t *testing.T) {
+	catalog := fakeCatalog{
+		commands: map[string]map[string]internalconfig.FlagType{
+			loaderTestCommand: {
+				"dry-run": internalconfig.FlagTypeBool,
+			},
+		},
+	}
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, loaderTestConfig)
+	writeConfigFile(t, path, `
+commands:
+  chainctl cluster install:
+    flags:
+      dry-run: "true"
+`)
+	loader := internalconfig.NewLoader(catalog)
+	profile, err := loader.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if v := profile.Commands[loaderTestCommand].Flags["dry-run"].Value; v != true {
+		t.Fatalf("expected dry-run true, got %v", v)
+	}
+}
+
+func TestCoerceValueStringSliceVariants(t *testing.T) {
+	catalog := fakeCatalog{
+		commands: map[string]map[string]internalconfig.FlagType{
+			loaderTestCommand: {
+				"roles": internalconfig.FlagTypeStringSlice,
+			},
+		},
+	}
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "chainctl.yaml")
+	writeConfigFile(t, path, `
+commands:
+  chainctl cluster install:
+    flags:
+      roles:
+        - operator
+        - 42
+`)
+	loader := internalconfig.NewLoader(catalog)
+	profile, err := loader.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	value := profile.Commands[loaderTestCommand].Flags["roles"].Value
+	list, ok := value.([]string)
+	if !ok {
+		t.Fatalf("expected string slice, got %T", value)
+	}
+	if len(list) != 2 || list[0] != "operator" || list[1] != "42" {
+		t.Fatalf("unexpected roles slice %#v", list)
+	}
+}
+
+func TestIsSensitiveMatchesSubstrings(t *testing.T) {
+	t.Helper()
+	catalog := fakeCatalog{
+		commands: map[string]map[string]internalconfig.FlagType{
+			"chainctl cluster install": {
+				"cluster-secret-token": internalconfig.FlagTypeString,
+			},
+		},
+	}
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "chainctl.yaml")
+	writeConfigFile(t, path, `
+commands:
+  chainctl cluster install:
+    flags:
+      cluster-secret-token: value
+`)
+	loader := internalconfig.NewLoader(catalog)
+	if _, err := loader.Load(path); !errors.Is(err, internalconfig.ErrSecretsDisallowed) {
+		t.Fatalf("expected ErrSecretsDisallowed for secret token, got %v", err)
 	}
 }
 

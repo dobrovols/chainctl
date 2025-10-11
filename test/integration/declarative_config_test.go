@@ -12,6 +12,11 @@ import (
 	pkgconfig "github.com/dobrovols/chainctl/pkg/config"
 )
 
+const (
+	sampleNamespace     = "runtime-ns"
+	sampleValuesFileKey = "values-file"
+)
+
 func TestDeclarativeConfigPipelineResolvesProfilesAndPrecedence(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "chainctl.yaml")
@@ -58,7 +63,7 @@ commands:
 	}
 
 	clusterRuntime := pkgconfig.FlagSet{
-		"namespace":         {Value: "runtime-ns", Source: pkgconfig.ValueSourceRuntime},
+		"namespace":         {Value: sampleNamespace, Source: pkgconfig.ValueSourceRuntime},
 		"values-passphrase": {Value: "runtime-pass", Source: pkgconfig.ValueSourceRuntime},
 		"output":            {Value: "json", Source: pkgconfig.ValueSourceRuntime},
 	}
@@ -67,7 +72,7 @@ commands:
 	if err != nil {
 		t.Fatalf("ResolveInvocation(cluster install): %v", err)
 	}
-	if clusterResolved.Flags["namespace"].Value != "runtime-ns" {
+	if clusterResolved.Flags["namespace"].Value != sampleNamespace {
 		t.Fatalf("expected runtime namespace override, got %v", clusterResolved.Flags["namespace"].Value)
 	}
 	if clusterResolved.Flags["values-file"].Source != pkgconfig.ValueSourceDefault {
@@ -78,7 +83,7 @@ commands:
 	if err != nil {
 		t.Fatalf("FormatSummary(text): %v", err)
 	}
-	if !strings.Contains(textSummary, "runtime-ns") || !strings.Contains(textSummary, "values-file") {
+	if !strings.Contains(textSummary, sampleNamespace) || !strings.Contains(textSummary, sampleValuesFileKey) {
 		t.Fatalf("expected summary to include runtime namespace and values-file, got:\n%s", textSummary)
 	}
 

@@ -10,10 +10,25 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dobrovols/chainctl/internal/config"
 	"github.com/dobrovols/chainctl/pkg/bundle"
 	"github.com/dobrovols/chainctl/pkg/helm"
 	pkgstate "github.com/dobrovols/chainctl/pkg/state"
 	"github.com/dobrovols/chainctl/pkg/telemetry"
+)
+
+const (
+	appTestOCIChartRef     = "oci://registry.local/my/app:1.2.3"
+	appTestBundlePath      = "/bundle"
+	appTestBundleTar       = "/tmp/bundle.tar"
+	appTestBundleTgz       = "/tmp/bundle.tgz"
+	appTestValuesFile      = "/tmp/values.enc"
+	appTestSecret          = "secret"
+	appTestNamespace       = "demo"
+	appTestRelease         = "demo-release"
+	appTestClusterEndpoint = "https://cluster.local"
+	appTestLoadFailed      = "load failed"
+	appTestStatePath       = "/tmp/state.json"
 )
 
 type stubResolver struct {
@@ -47,7 +62,7 @@ func (c *capturingLoader) load(path, cache string) (*bundle.Bundle, error) {
 func TestResolveChartSourceRequiresSingleSource(t *testing.T) {
 	ctx := context.Background()
 	deps := UpgradeDeps{}
-	options := sharedOptions{ChartReference: "oci://chart", BundlePath: "/tmp/bundle.tgz"}
+	options := sharedOptions{ChartReference: "oci://chart", BundlePath: appTestBundleTgz}
 
 	if _, err := resolveChartSource(ctx, options, deps); !errors.Is(err, errConflictingSources) {
 		t.Fatalf("expected conflicting sources error, got %v", err)
@@ -60,7 +75,7 @@ func TestResolveChartSourceRequiresSingleSource(t *testing.T) {
 
 func TestResolveChartSourceUsesResolverForOCI(t *testing.T) {
 	ctx := context.Background()
-	options := sharedOptions{ChartReference: "oci://registry.local/my/app:1.2.3"}
+	options := sharedOptions{ChartReference: appTestOCIChartRef}
 	res := &stubResolver{result: helm.ResolveResult{Source: pkgstate.ChartSource{Type: "oci", Reference: options.ChartReference, Digest: "sha256:digest"}}}
 	deps := UpgradeDeps{Resolver: res}
 
@@ -81,7 +96,7 @@ func TestResolveChartSourceUsesResolverForOCI(t *testing.T) {
 
 func TestResolveChartSourceRequiresResolverForOCI(t *testing.T) {
 	ctx := context.Background()
-	options := sharedOptions{ChartReference: "oci://registry.local/my/app:1.2.3"}
+	options := sharedOptions{ChartReference: appTestOCIChartRef}
 
 	if _, err := resolveChartSource(ctx, options, UpgradeDeps{}); !errors.Is(err, errResolverPullerMissing) {
 		t.Fatalf("expected resolver missing error, got %v", err)
@@ -90,9 +105,9 @@ func TestResolveChartSourceRequiresResolverForOCI(t *testing.T) {
 
 func TestResolveChartSourcePrefersResolverBundleResult(t *testing.T) {
 	ctx := context.Background()
-	b := &bundle.Bundle{Path: "/bundle"}
-	res := &stubResolver{result: helm.ResolveResult{Source: pkgstate.ChartSource{Type: "bundle", Reference: "/bundle"}, Bundle: b}}
-	options := sharedOptions{BundlePath: "/bundle"}
+	b := &bundle.Bundle{Path: appTestBundlePath}
+	res := &stubResolver{result: helm.ResolveResult{Source: pkgstate.ChartSource{Type: "bundle", Reference: appTestBundlePath}, Bundle: b}}
+	options := sharedOptions{BundlePath: appTestBundlePath}
 
 	result, err := resolveChartSource(ctx, options, UpgradeDeps{Resolver: res})
 	if err != nil {
@@ -105,7 +120,7 @@ func TestResolveChartSourcePrefersResolverBundleResult(t *testing.T) {
 
 func TestResolveChartSourceFallsBackToLoader(t *testing.T) {
 	ctx := context.Background()
-	b := &bundle.Bundle{Path: "/bundle", CacheRoot: "/cache"}
+	b := &bundle.Bundle{Path: appTestBundlePath, CacheRoot: "/cache"}
 	loader := &capturingLoader{bundle: b}
 	options := sharedOptions{BundlePath: filepath.Join("/tmp", "bundle.tar"), ChartReference: ""}
 
@@ -130,26 +145,25 @@ func TestResolveChartSourceFallsBackToLoader(t *testing.T) {
 
 func TestResolveChartSourceLoaderErrorPropagates(t *testing.T) {
 	ctx := context.Background()
-	loader := &capturingLoader{err: errors.New("load failed")}
-	options := sharedOptions{BundlePath: "/tmp/bundle.tar"}
+	loader := &capturingLoader{err: errors.New(appTestLoadFailed)}
+	options := sharedOptions{BundlePath: appTestBundleTar}
 
 	_, err := resolveChartSource(ctx, options, UpgradeDeps{BundleLoader: loader.load})
-	if err == nil || !strings.Contains(err.Error(), "load failed") {
+	if err == nil || !strings.Contains(err.Error(), appTestLoadFailed) {
 		t.Fatalf("expected loader error, got %v", err)
 	}
 }
 
 func TestResolveStateOverridesUsesResolver(t *testing.T) {
-	path := "/tmp/state.json"
-	overrides, hint, err := resolveStateOverrides(sharedOptions{StateFilePath: path})
+	overrides, hint, err := resolveStateOverrides(sharedOptions{StateFilePath: appTestStatePath})
 	if err != nil {
 		t.Fatalf("resolve state overrides: %v", err)
 	}
-	if overrides.StateFilePath != path {
-		t.Fatalf("expected overrides path %s, got %s", path, overrides.StateFilePath)
+	if overrides.StateFilePath != appTestStatePath {
+		t.Fatalf("expected overrides path %s, got %s", appTestStatePath, overrides.StateFilePath)
 	}
-	if hint != path {
-		t.Fatalf("expected hint %s, got %s", path, hint)
+	if hint != appTestStatePath {
+		t.Fatalf("expected hint %s, got %s", appTestStatePath, hint)
 	}
 }
 
@@ -202,6 +216,51 @@ func TestSplitOCIReferenceParsesVersion(t *testing.T) {
 	}
 	if chart != "oci://registry.local:5000/apps/app" {
 		t.Fatalf("unexpected chart reference %s", chart)
+	}
+}
+
+func TestBuildProfileForActionInstall(t *testing.T) {
+	opts := sharedOptions{
+		ValuesFile:       appTestValuesFile,
+		ValuesPassphrase: appTestSecret,
+		Namespace:        appTestNamespace,
+		ReleaseName:      appTestRelease,
+	}
+	profile, err := buildProfileForAction(opts, actionInstall)
+	if err != nil {
+		t.Fatalf("buildProfileForAction: %v", err)
+	}
+	if profile.HelmNamespace != appTestNamespace {
+		t.Fatalf("expected namespace %s, got %s", appTestNamespace, profile.HelmNamespace)
+	}
+	if profile.HelmRelease != appTestRelease {
+		t.Fatalf("expected release %s, got %s", appTestRelease, profile.HelmRelease)
+	}
+}
+
+func TestBuildProfileForActionUpgradeRequiresEndpoint(t *testing.T) {
+	_, err := buildProfileForAction(sharedOptions{ValuesFile: appTestValuesFile}, actionUpgrade)
+	if err == nil {
+		t.Fatalf("expected error when upgrade lacks cluster endpoint")
+	}
+
+	profile, err := buildProfileForAction(sharedOptions{
+		ClusterEndpoint: appTestClusterEndpoint,
+		ValuesFile:      appTestValuesFile,
+	}, actionUpgrade)
+	if err != nil {
+		t.Fatalf("buildProfileForAction upgrade: %v", err)
+	}
+	if profile.ClusterEndpoint != appTestClusterEndpoint {
+		t.Fatalf("expected cluster endpoint to be set, got %s", profile.ClusterEndpoint)
+	}
+}
+
+func TestEmitOutputUnsupportedFormat(t *testing.T) {
+	cmd := &cobra.Command{}
+	err := emitOutput(cmd, &config.Profile{}, helm.ResolveResult{}, "", "yaml", actionInstall, sharedOptions{})
+	if !errors.Is(err, errUnsupportedOutput) {
+		t.Fatalf("expected errUnsupportedOutput, got %v", err)
 	}
 }
 
