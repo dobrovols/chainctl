@@ -71,6 +71,7 @@ func NewUpgradeCommand() *cobra.Command {
 	}
 
 	bindCommonFlags(cmd, &opts)
+	markDeclarative(cmd)
 
 	return cmd
 }

@@ -9,6 +9,7 @@ chainctl is a single-binary Go CLI for installing, upgrading, and operating a Ku
 - **Node onboarding**: `chainctl node token` / `chainctl node join` manage scoped pre-shared tokens for multi-node scaling.
 - **Air-gapped ready**: Installer reads bundles from removable media tarballs with checksum validation.
 - **Security**: Encrypted values files handled via AES-256-GCM; OTEL exporters support hashed cluster IDs.
+- **Declarative configuration**: Supply `chainctl.yaml` to preload flag values and reusable profiles. Autodiscovery searches `--config`, `CHAINCTL_CONFIG`, the working directory, XDG config home, then `$HOME/.config/chainctl/config.yaml`. Summaries show each flag's effective value and source (default, profile, command, runtime).
 
 ## Quickstart
 See [`specs/001-single-k8s-app-ctl/quickstart.md`](specs/001-single-k8s-app-ctl/quickstart.md) for full instructions.
@@ -16,6 +17,7 @@ See [`specs/001-single-k8s-app-ctl/quickstart.md`](specs/001-single-k8s-app-ctl/
 Basic bootstrap (online):
 ```bash
 chainctl cluster install \
+  --config chainctl.yaml \
   --bootstrap \
   --values-file /path/to/values.enc \
   --values-passphrase "$CHAINCTL_VALUES_PASSPHRASE"
@@ -44,6 +46,7 @@ chainctl app install \
 Application upgrade with JSON output (OCI chart + state persistence):
 ```bash
 chainctl app upgrade \
+  --config chainctl.yaml \
   --cluster-endpoint https://cluster.local \
   --values-file values.enc \
   --values-passphrase "$CHAINCTL_VALUES_PASSPHRASE" \
@@ -54,6 +57,8 @@ chainctl app upgrade \
   --state-file-name app.json \
   --output json
 ```
+
+Declarative configs may define shared namespaces, bundles, dry-run defaults, and app profiles. Runtime flags always win, and each command prints a summary before execution so operators can verify the merged configuration. Sample YAML and summaries live in [`docs/examples/config/`](docs/examples/config/).
 
 State file defaults to `$XDG_CONFIG_HOME/chainctl/state/app.json` (or `$HOME/.chainctl/state/app.json`). Override with `--state-file` (absolute path) or `--state-file-name` (filename within managed directory). On failures to write state, the deployment remains and the CLI reports the error.
 

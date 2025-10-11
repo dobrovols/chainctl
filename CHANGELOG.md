@@ -3,6 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+- feat: support declarative flag configuration via `chainctl.yaml`, including discovery precedence, profile merging, telemetry/log summaries, and CLI documentation updates.
 - feat: add structured logging across cluster/app workflows with sanitized helm/bootstrap command telemetry.
 - docs: update quickstart, runbooks, and examples for centralized log ingestion.
 - feat: add OpenTelemetry wiring with configurable exporters.

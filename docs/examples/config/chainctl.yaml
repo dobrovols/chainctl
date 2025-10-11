@@ -1,0 +1,20 @@
+metadata:
+  name: example-config
+  description: Example declarative configuration for chainctl documentation
+defaults:
+  namespace: demo
+  values-file: "./values.enc"
+profiles:
+  staging:
+    namespace: staging
+commands:
+  chainctl cluster install:
+    flags:
+      dry-run: true
+      output: json
+  chainctl app install:
+    profiles:
+      - staging
+    flags:
+      chart: oci://registry.example.com/app/demo:1.0.0
+      release-name: demo-staging

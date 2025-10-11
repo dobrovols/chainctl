@@ -5,6 +5,7 @@ import (
 
 	appcmd "github.com/dobrovols/chainctl/cmd/chainctl/app"
 	clustercmd "github.com/dobrovols/chainctl/cmd/chainctl/cluster"
+	"github.com/dobrovols/chainctl/cmd/chainctl/declarative"
 	nodecmd "github.com/dobrovols/chainctl/cmd/chainctl/node"
 	secretcmd "github.com/dobrovols/chainctl/cmd/chainctl/secrets"
 )
@@ -20,6 +21,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(nodecmd.NewNodeCommand())
 	cmd.AddCommand(clustercmd.NewClusterCommand())
 	cmd.AddCommand(appcmd.NewAppCommand())
+	declarative.NewManager(cmd).Bind(cmd)
 
 	return cmd
 }

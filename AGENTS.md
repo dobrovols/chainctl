@@ -8,6 +8,8 @@ Auto-generated from all feature plans. Last updated: 2025-10-05
 - Local filesystem JSON state file under user config directory (002-oci-helm-state)
 - Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters (003-logging)
 - N/A (logs streamed to stdout/stderr for aggregation) (003-logging)
+- Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, internal `pkg/state`, `pkg/telemetry`, `internal/config`, YAML parsing via `gopkg.in/yaml.v3` (004-declarative-config-file)
+- Local filesystem YAML files under repo or XDG config directories (read-only at runtime) (004-declarative-config-file)
 
 ## Project Structure
 ```
@@ -28,9 +30,9 @@ test/                # unit, integration (envtest/kind), and e2e suites
 Go 1.24 (gofmt + gofumpt enforced): use wrapped errors, keep exported function docs concise, prefer context-aware operations, follow noun-verb CLI naming.
 
 ## Recent Changes
+- 004-declarative-config-file: Added Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, internal `pkg/state`, `pkg/telemetry`, `internal/config`, YAML parsing via `gopkg.in/yaml.v3`
 - 003-logging: Added Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters
 - 003-logging: Added Go 1.24 + `spf13/cobra`, `helm.sh/helm/v3`, existing `pkg/telemetry`, `pkg/bootstrap`, `pkg/helm`, OpenTelemetry exporters
-- 002-oci-helm-state: Added CLI support for OCI chart references (`--chart oci://...`), mutually exclusive with `--bundle-path`; persisted state file with overrides (`--state-file`, `--state-file-name`). Go 1.24 + Cobra CLI (`spf13/cobra`), Helm SDK (`helm.sh/helm/v3`) leveraged alongside existing `pkg/bundle`, `pkg/helm`, `pkg/telemetry`.
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

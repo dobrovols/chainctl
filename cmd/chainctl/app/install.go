@@ -21,6 +21,7 @@ func NewInstallCommand() *cobra.Command {
 	}
 
 	bindCommonFlags(cmd, &opts)
+	markDeclarative(cmd)
 
 	return cmd
 }

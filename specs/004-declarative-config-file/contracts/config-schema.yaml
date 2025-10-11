@@ -1,0 +1,69 @@
+# Declarative Configuration Schema (conceptual)
+#
+# This schema outlines the supported YAML structure for declarative flag management.
+# It is expressed using OpenAPI-like syntax for documentation purposes and will
+# be enforced via custom Go validation logic.
+
+openapi: 3.1.0
+info:
+  title: chainctl Declarative Configuration
+  version: 0.1.0
+
+components:
+  schemas:
+    ConfigurationProfile:
+      type: object
+      additionalProperties: false
+      properties:
+        metadata:
+          type: object
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+            description:
+              type: string
+        defaults:
+          $ref: '#/components/schemas/FlagMap'
+        profiles:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/FlagMap'
+        commands:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CommandSection'
+      required:
+        - commands
+
+    CommandSection:
+      type: object
+      additionalProperties: false
+      properties:
+        flags:
+          $ref: '#/components/schemas/FlagMap'
+        profiles:
+          type: array
+          items:
+            type: string
+        disabled:
+          type: boolean
+
+    FlagMap:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/FlagValue'
+
+    FlagValue:
+      oneOf:
+        - type: string
+        - type: boolean
+        - type: number
+        - type: array
+          items:
+            type: string
+      description: >
+        Flag values must match the underlying flag type. Sensitive values such as
+        tokens, passwords, or kubeconfigs are prohibited and trigger validation failures.
+
+paths: {}

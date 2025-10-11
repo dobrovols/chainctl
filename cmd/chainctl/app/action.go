@@ -14,6 +14,7 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
+	"github.com/dobrovols/chainctl/cmd/chainctl/declarative"
 	"github.com/dobrovols/chainctl/internal/config"
 	internalstate "github.com/dobrovols/chainctl/internal/state"
 	"github.com/dobrovols/chainctl/pkg/bundle"
@@ -109,6 +110,9 @@ func runAppAction(cmd *cobra.Command, options sharedOptions, deps UpgradeDeps, a
 	logger := tel.StructuredLogger()
 	if logger == nil {
 		return fmt.Errorf("structured logger unavailable")
+	}
+	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
+		declarative.EmitTelemetry(logger, resolved)
 	}
 
 	workflowStep := workflowStepName(action)
