@@ -31,7 +31,7 @@ func SanitizeCommand(args []string) string {
 		return ""
 	}
 
-	sanitized := make([]string, 0, len(args))
+	sanitized := []string{}
 	var nextTransform func(string) string
 
 	for _, arg := range args {

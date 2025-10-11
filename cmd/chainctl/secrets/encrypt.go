@@ -111,7 +111,7 @@ func resolvePassphrase(writer io.Writer, provided string) (string, error) {
 
 func renderEncryptResult(cmd *cobra.Command, format string, result *secrethandler.EncryptResult) error {
 	if result == nil {
-		return nil
+		return secrethandler.NewError(secrethandler.ErrCodeEncryption, errors.New("encryption result is nil"))
 	}
 	switch format {
 	case "json":

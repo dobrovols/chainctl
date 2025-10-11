@@ -99,7 +99,7 @@ func locateHome() (LocationResult, bool, error) {
 	return resolveCandidate(candidate, ConfigSourceHome, false)
 }
 
-func resolveCandidate(path string, source ConfigSource, errorOnMissing bool) (LocationResult, bool, error) {
+func resolveCandidate(path string, source ConfigSource, requireExists bool) (LocationResult, bool, error) {
 	clean := filepath.Clean(path)
 	abs, err := toAbsolute(clean)
 	if err != nil {
@@ -108,7 +108,7 @@ func resolveCandidate(path string, source ConfigSource, errorOnMissing bool) (Lo
 	if exists(abs) {
 		return LocationResult{Path: abs, Source: source}, true, nil
 	}
-	if errorOnMissing {
+	if requireExists {
 		return LocationResult{}, false, fmt.Errorf("%w: %s", ErrConfigNotFound, abs)
 	}
 	return LocationResult{}, false, nil

@@ -85,7 +85,7 @@ func (m *Manager) Write(record Record, overrides Overrides) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	record = ensureTimestamp(record)
+	ensureTimestamp(&record)
 
 	dir := filepath.Dir(path)
 	if err := m.ensureDirectory(dir); err != nil {
@@ -99,11 +99,10 @@ func (m *Manager) Write(record Record, overrides Overrides) (string, error) {
 	return path, nil
 }
 
-func ensureTimestamp(record Record) Record {
+func ensureTimestamp(record *Record) {
 	if record.Timestamp == "" {
 		record.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
-	return record
 }
 
 func (m *Manager) ensureDirectory(dir string) error {
@@ -113,9 +112,11 @@ func (m *Manager) ensureDirectory(dir string) error {
 		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
 
+	// Directory does not exist, create with permissions
 	if err := os.MkdirAll(dir, m.dirPerm); err != nil {
 		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
+	// Only set permissions if directory was just created
 	if err := os.Chmod(dir, m.dirPerm); err != nil {
 		return fmt.Errorf("%w: %w", errWriteFailed, err)
 	}
