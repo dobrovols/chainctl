@@ -37,19 +37,43 @@ func NewLoader(catalog FlagCatalog) *Loader {
 
 // Load parses the YAML file at the supplied path, performing validation and returning a configuration profile.
 func (l *Loader) Load(path string) (*pkgconfig.ConfigurationProfile, error) {
+	raw, err := readRawProfile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	profile := newConfigurationProfile(path, raw)
+
+	if err := l.populateDefaults(profile, raw); err != nil {
+		return nil, err
+	}
+	if err := l.populateProfiles(profile, raw); err != nil {
+		return nil, err
+	}
+	if err := l.populateCommands(profile, raw); err != nil {
+		return nil, err
+	}
+
+	return profile, nil
+}
+
+func readRawProfile(path string) (rawProfile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config %q: %w", path, err)
+		return rawProfile{}, fmt.Errorf("read config %q: %w", path, err)
 	}
 
 	var raw rawProfile
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&raw); err != nil && err != io.EOF {
-		return nil, fmt.Errorf("parse declarative config %q: %w", path, err)
+		return rawProfile{}, fmt.Errorf("parse declarative config %q: %w", path, err)
 	}
+	return raw, nil
+}
 
-	profile := &pkgconfig.ConfigurationProfile{
+func newConfigurationProfile(path string, raw rawProfile) *pkgconfig.ConfigurationProfile {
+	return &pkgconfig.ConfigurationProfile{
 		Metadata: pkgconfig.Metadata{
 			Name:        raw.Metadata.Name,
 			Description: raw.Metadata.Description,
@@ -59,35 +83,43 @@ func (l *Loader) Load(path string) (*pkgconfig.ConfigurationProfile, error) {
 		Commands:   map[string]pkgconfig.CommandSection{},
 		SourcePath: path,
 	}
+}
 
-	if len(raw.Defaults) > 0 {
-		defaults, err := l.buildFlagSet(raw.Defaults, "", pkgconfig.ValueSourceDefault)
-		if err != nil {
-			return nil, err
-		}
-		profile.Defaults = defaults
+func (l *Loader) populateDefaults(profile *pkgconfig.ConfigurationProfile, raw rawProfile) error {
+	if len(raw.Defaults) == 0 {
+		return nil
 	}
+	defaults, err := l.buildFlagSet(raw.Defaults, "", pkgconfig.ValueSourceDefault)
+	if err != nil {
+		return err
+	}
+	profile.Defaults = defaults
+	return nil
+}
 
+func (l *Loader) populateProfiles(profile *pkgconfig.ConfigurationProfile, raw rawProfile) error {
 	for name, entries := range raw.Profiles {
 		flagSet, err := l.buildFlagSet(entries, "", pkgconfig.ValueSourceProfile)
 		if err != nil {
-			return nil, fmt.Errorf("profile %q: %w", name, err)
+			return fmt.Errorf("profile %q: %w", name, err)
 		}
 		profile.Profiles[name] = flagSet
 	}
+	return nil
+}
 
+func (l *Loader) populateCommands(profile *pkgconfig.ConfigurationProfile, raw rawProfile) error {
 	for command, section := range raw.Commands {
 		cmdPath := strings.TrimSpace(command)
 		if cmdPath == "" {
 			continue
 		}
-		if !l.catalog.IsCommandSupported(cmdPath) {
-			available := l.catalog.Commands()
-			return nil, fmt.Errorf("%w: %s. Available commands: %s", ErrUnknownCommand, cmdPath, strings.Join(available, ", "))
+		if err := l.ensureCommandSupported(cmdPath); err != nil {
+			return err
 		}
 		flagSet, err := l.buildFlagSet(section.Flags, cmdPath, pkgconfig.ValueSourceCommand)
 		if err != nil {
-			return nil, fmt.Errorf("command %q: %w", cmdPath, err)
+			return fmt.Errorf("command %q: %w", cmdPath, err)
 		}
 		profile.Commands[cmdPath] = pkgconfig.CommandSection{
 			Profiles: append([]string(nil), section.Profiles...),
@@ -95,8 +127,15 @@ func (l *Loader) Load(path string) (*pkgconfig.ConfigurationProfile, error) {
 			Disabled: section.Disabled,
 		}
 	}
+	return nil
+}
 
-	return profile, nil
+func (l *Loader) ensureCommandSupported(cmdPath string) error {
+	if l.catalog.IsCommandSupported(cmdPath) {
+		return nil
+	}
+	available := l.catalog.Commands()
+	return fmt.Errorf("%w: %s. Available commands: %s", ErrUnknownCommand, cmdPath, strings.Join(available, ", "))
 }
 
 type rawProfile struct {
@@ -167,43 +206,51 @@ func isSensitive(name string) bool {
 func coerceValue(name string, raw any, flagType FlagType) (any, error) {
 	switch flagType {
 	case FlagTypeBool:
-		switch v := raw.(type) {
-		case bool:
-			return v, nil
-		case string:
-			value, err := strconv.ParseBool(strings.TrimSpace(v))
-			if err != nil {
-				return nil, fmt.Errorf("%w: %s expects boolean", ErrInvalidFlagType, name)
-			}
-			return value, nil
-		default:
-			return nil, fmt.Errorf("%w: %s expects boolean", ErrInvalidFlagType, name)
-		}
+		return coerceBoolValue(name, raw)
 	case FlagTypeStringSlice:
-		switch v := raw.(type) {
-		case []interface{}:
-			out := make([]string, len(v))
-			for i, item := range v {
-				str, err := stringify(name, item)
-				if err != nil {
-					return nil, err
-				}
-				out[i] = str
-			}
-			return out, nil
-		case []string:
-			return append([]string(nil), v...), nil
-		case string:
-			return []string{strings.TrimSpace(v)}, nil
-		default:
-			return nil, fmt.Errorf("%w: %s expects string list", ErrInvalidFlagType, name)
-		}
+		return coerceStringSliceValue(name, raw)
 	default:
 		str, err := stringify(name, raw)
 		if err != nil {
 			return nil, err
 		}
 		return str, nil
+	}
+}
+
+func coerceBoolValue(name string, raw any) (any, error) {
+	switch v := raw.(type) {
+	case bool:
+		return v, nil
+	case string:
+		value, err := strconv.ParseBool(strings.TrimSpace(v))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s expects boolean", ErrInvalidFlagType, name)
+		}
+		return value, nil
+	default:
+		return nil, fmt.Errorf("%w: %s expects boolean", ErrInvalidFlagType, name)
+	}
+}
+
+func coerceStringSliceValue(name string, raw any) (any, error) {
+	switch v := raw.(type) {
+	case []interface{}:
+		out := make([]string, len(v))
+		for i, item := range v {
+			str, err := stringify(name, item)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = str
+		}
+		return out, nil
+	case []string:
+		return append([]string(nil), v...), nil
+	case string:
+		return []string{strings.TrimSpace(v)}, nil
+	default:
+		return nil, fmt.Errorf("%w: %s expects string list", ErrInvalidFlagType, name)
 	}
 }
 

@@ -17,18 +17,41 @@ var (
 // ResolveInvocation merges defaults, reusable profiles, command-specific entries, and runtime overrides
 // into a single flag set for the provided command path.
 func ResolveInvocation(profile *ConfigurationProfile, commandPath string, runtime FlagSet) (*ResolvedInvocation, error) {
-	if profile == nil {
-		return nil, ErrCommandNotDeclared
+	section, err := validateCommandSection(profile, commandPath)
+	if err != nil {
+		return nil, err
 	}
 
+	resolved := newResolvedInvocation(commandPath, profile, section)
+	applier := newFlagApplier(resolved)
+
+	applier.Apply("defaults", profile.Defaults, ValueSourceDefault)
+
+	if err := applyProfileSections(applier, profile, section); err != nil {
+		return nil, err
+	}
+
+	applier.Apply("command "+commandPath, section.Flags, ValueSourceCommand)
+	applier.Apply("runtime", sanitizeRuntimeOverrides(runtime), ValueSourceRuntime)
+
+	return resolved, nil
+}
+
+func validateCommandSection(profile *ConfigurationProfile, commandPath string) (CommandSection, error) {
+	if profile == nil {
+		return CommandSection{}, ErrCommandNotDeclared
+	}
 	section, ok := profile.Commands[commandPath]
 	if !ok {
-		return nil, ErrCommandNotDeclared
+		return CommandSection{}, ErrCommandNotDeclared
 	}
 	if section.Disabled {
-		return nil, ErrCommandDisabled
+		return CommandSection{}, ErrCommandDisabled
 	}
+	return section, nil
+}
 
+func newResolvedInvocation(commandPath string, profile *ConfigurationProfile, section CommandSection) *ResolvedInvocation {
 	resolved := &ResolvedInvocation{
 		CommandPath: commandPath,
 		Flags:       FlagSet{},
@@ -37,51 +60,57 @@ func ResolveInvocation(profile *ConfigurationProfile, commandPath string, runtim
 	if len(section.Profiles) > 0 {
 		resolved.Profiles = append([]string(nil), section.Profiles...)
 	}
+	return resolved
+}
 
-	apply := func(source string, set FlagSet, fallback ValueSource) {
-		if len(set) == 0 {
-			return
+type flagApplier struct {
+	resolved *ResolvedInvocation
+}
+
+func newFlagApplier(resolved *ResolvedInvocation) *flagApplier {
+	return &flagApplier{resolved: resolved}
+}
+
+func (a *flagApplier) Apply(source string, set FlagSet, fallback ValueSource) {
+	if len(set) == 0 {
+		return
+	}
+	for name, value := range set {
+		current := value
+		if current.Source == "" {
+			current.Source = fallback
 		}
-		for name, value := range set {
-			current := value
-			if current.Source == "" {
-				current.Source = fallback
-			}
-			if previous, ok := resolved.Flags[name]; ok {
-				resolved.Overrides = append(resolved.Overrides, fmt.Sprintf("%s overrides %s (was %s)", source, name, previous.Source))
-			}
-			resolved.Flags[name] = current
+		if previous, ok := a.resolved.Flags[name]; ok {
+			a.resolved.Overrides = append(a.resolved.Overrides, fmt.Sprintf("%s overrides %s (was %s)", source, name, previous.Source))
+		}
+		a.resolved.Flags[name] = current
+	}
+}
+
+func applyProfileSections(applier *flagApplier, profile *ConfigurationProfile, section CommandSection) error {
+	if len(section.Profiles) == 0 {
+		return nil
+	}
+	for _, name := range section.Profiles {
+		flagSet, ok := profile.Profiles[name]
+		if !ok {
+			return fmt.Errorf("%w: %s", ErrUnknownProfile, name)
+		}
+		applier.Apply("profile "+name, flagSet, ValueSourceProfile)
+	}
+	return nil
+}
+
+func sanitizeRuntimeOverrides(runtime FlagSet) FlagSet {
+	if len(runtime) == 0 {
+		return nil
+	}
+	cloned := runtime.Clone()
+	for name, value := range cloned {
+		if value.Source == "" {
+			value.Source = ValueSourceRuntime
+			cloned[name] = value
 		}
 	}
-
-	if profile.Defaults != nil {
-		apply("defaults", profile.Defaults, ValueSourceDefault)
-	}
-
-	if len(section.Profiles) > 0 {
-		for _, name := range section.Profiles {
-			flagSet, ok := profile.Profiles[name]
-			if !ok {
-				return nil, fmt.Errorf("%w: %s", ErrUnknownProfile, name)
-			}
-			apply("profile "+name, flagSet, ValueSourceProfile)
-		}
-	}
-
-	if section.Flags != nil {
-		apply("command "+commandPath, section.Flags, ValueSourceCommand)
-	}
-
-	if runtime != nil {
-		runtimeSet := runtime.Clone()
-		for name, fv := range runtimeSet {
-			if fv.Source == "" {
-				fv.Source = ValueSourceRuntime
-			}
-			runtimeSet[name] = fv
-		}
-		apply("runtime", runtimeSet, ValueSourceRuntime)
-	}
-
-	return resolved, nil
+	return cloned
 }

@@ -30,50 +30,20 @@ func SanitizeCommand(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
-	sanitized := make([]string, len(args))
+
+	sanitized := []string{}
 	var nextTransform func(string) string
-	for i, arg := range args {
+
+	for _, arg := range args {
 		if nextTransform != nil {
-			sanitized[i] = nextTransform(arg)
+			sanitized = append(sanitized, nextTransform(arg))
 			nextTransform = nil
 			continue
 		}
 
-		lower := strings.ToLower(arg)
-
-		// Handle --set/--set-string style flags where the next argument contains key=value pairs.
-		if lower == "--set" || lower == "--set-string" {
-			sanitized[i] = arg
-			nextTransform = func(value string) string {
-				return sanitizeSetExpressions(value)
-			}
-			continue
-		}
-
-		if eq := strings.Index(arg, "="); eq > 0 {
-			flag := arg[:eq]
-			value := arg[eq+1:]
-			if isSensitiveFlag(flag) {
-				sanitized[i] = flag + "=" + redactionPlaceholder
-				continue
-			}
-			if isSensitiveKey(value) && strings.HasPrefix(lower, "--") {
-				sanitized[i] = flag + "=" + redactionPlaceholder
-				continue
-			}
-			if strings.HasPrefix(lower, "--set") {
-				sanitized[i] = flag + "=" + sanitizeSetExpressions(value)
-				continue
-			}
-		}
-
-		if isSensitiveFlag(arg) {
-			sanitized[i] = arg
-			nextTransform = func(string) string { return redactionPlaceholder }
-			continue
-		}
-
-		sanitized[i] = arg
+		cleaned, followUp := sanitizeCommandArg(arg)
+		sanitized = append(sanitized, cleaned)
+		nextTransform = followUp
 	}
 
 	if nextTransform != nil {
@@ -81,6 +51,54 @@ func SanitizeCommand(args []string) string {
 	}
 
 	return strings.Join(sanitized, " ")
+}
+
+func sanitizeCommandArg(arg string) (string, func(string) string) {
+	lower := strings.ToLower(arg)
+
+	if transform := nextForSetStyleFlag(lower); transform != nil {
+		return arg, transform
+	}
+
+	if sanitized, handled := sanitizeInlineAssignment(arg, lower); handled {
+		return sanitized, nil
+	}
+
+	if isSensitiveFlag(arg) {
+		return arg, func(string) string { return redactionPlaceholder }
+	}
+
+	return arg, nil
+}
+
+func nextForSetStyleFlag(lower string) func(string) string {
+	if lower == "--set" || lower == "--set-string" {
+		return func(value string) string {
+			return sanitizeSetExpressions(value)
+		}
+	}
+	return nil
+}
+
+func sanitizeInlineAssignment(arg, lower string) (string, bool) {
+	eq := strings.Index(arg, "=")
+	if eq <= 0 {
+		return "", false
+	}
+
+	flag := arg[:eq]
+	value := arg[eq+1:]
+
+	switch {
+	case isSensitiveFlag(flag):
+		return flag + "=" + redactionPlaceholder, true
+	case strings.HasPrefix(lower, "--") && isSensitiveKey(value):
+		return flag + "=" + redactionPlaceholder, true
+	case strings.HasPrefix(lower, "--set"):
+		return flag + "=" + sanitizeSetExpressions(value), true
+	default:
+		return "", false
+	}
 }
 
 // SanitizeEnv returns a sanitized copy of the provided environment variables.
