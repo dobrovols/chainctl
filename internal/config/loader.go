@@ -82,7 +82,8 @@ func (l *Loader) Load(path string) (*pkgconfig.ConfigurationProfile, error) {
 			continue
 		}
 		if !l.catalog.IsCommandSupported(cmdPath) {
-			return nil, fmt.Errorf("%w: %s", ErrUnknownCommand, cmdPath)
+			available := l.catalog.Commands()
+			return nil, fmt.Errorf("%w: %s. Available commands: %s", ErrUnknownCommand, cmdPath, strings.Join(available, ", "))
 		}
 		flagSet, err := l.buildFlagSet(section.Flags, cmdPath, pkgconfig.ValueSourceCommand)
 		if err != nil {
