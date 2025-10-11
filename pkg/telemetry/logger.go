@@ -36,6 +36,8 @@ const (
 	CategoryCommand Category = "command"
 	// CategoryDiagnostic marks ancillary diagnostic events.
 	CategoryDiagnostic Category = "diagnostic"
+	// CategoryConfig marks declarative configuration events.
+	CategoryConfig Category = "config"
 )
 
 // Entry describes a structured log entry prior to serialization.

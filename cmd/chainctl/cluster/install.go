@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/dobrovols/chainctl/cmd/chainctl/declarative"
 	"github.com/dobrovols/chainctl/internal/config"
 	"github.com/dobrovols/chainctl/internal/validation"
 	"github.com/dobrovols/chainctl/pkg/bootstrap"
@@ -111,6 +112,7 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.Airgapped, "airgapped", false, "Use air-gapped mode (requires --bundle-path)")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Run validations without applying changes")
 	cmd.Flags().StringVar(&opts.Output, "output", "text", "Output format: text or json")
+	markDeclarative(cmd)
 
 	return cmd
 }
@@ -161,6 +163,9 @@ func runInstall(cmd *cobra.Command, opts InstallOptions, deps InstallDeps) (err 
 	logger := tel.StructuredLogger()
 	if logger == nil {
 		return fmt.Errorf("structured logger unavailable")
+	}
+	if resolved, ok := declarative.ResolvedInvocationFromContext(cmd); ok {
+		declarative.EmitTelemetry(logger, resolved)
 	}
 	bootstrapHasLogging := false
 	if orch, ok := deps.Bootstrapper.(*bootstrap.Orchestrator); ok {

@@ -1,0 +1,34 @@
+{
+  "commandPath": "chainctl cluster install",
+  "flags": [
+    {
+      "name": "dry-run",
+      "value": true,
+      "source": "command"
+    },
+    {
+      "name": "namespace",
+      "value": "runtime-ns",
+      "source": "runtime"
+    },
+    {
+      "name": "output",
+      "value": "json",
+      "source": "command"
+    },
+    {
+      "name": "values-file",
+      "value": "./values.enc",
+      "source": "default"
+    },
+    {
+      "name": "values-passphrase",
+      "value": "runtime-pass",
+      "source": "runtime"
+    }
+  ],
+  "overrides": [
+    "runtime overrides namespace (was default)"
+  ],
+  "sourcePath": "docs/examples/config/chainctl.yaml"
+}

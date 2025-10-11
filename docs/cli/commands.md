@@ -6,10 +6,17 @@
 - `chainctl node` – manage join tokens and node onboarding.
 - `chainctl secrets` – encrypt configuration values.
 
+## Declarative Configuration
+- `--config` accepts a YAML file describing shared defaults, reusable profiles, and per-command flag overrides.
+- Discovery precedence: explicit `--config` path → `CHAINCTL_CONFIG` → `./chainctl.yaml` → `$XDG_CONFIG_HOME/chainctl/config.yaml` → `$HOME/.config/chainctl/config.yaml`.
+- YAML must not contain secrets (`values-passphrase`, tokens, kubeconfigs); provide sensitive values via runtime flags or secret stores.
+- Before command execution, chainctl prints a summary showing each flag, effective value, and source (default, profile, command, runtime) in text or JSON format to allow validation and audit logging.
+
 ## Commands
 ### chainctl app install
 ```
 chainctl app install \
+  [--config chainctl.yaml] \
   --values-file values.enc \
   --values-passphrase <passphrase> \
   --namespace demo \
@@ -21,6 +28,7 @@ chainctl app install \
   [--state-file-name app.json] \
   [--output json]
 ```
+- Declarative configs can provide defaults for namespace, release name, bundle paths, and chart references. Runtime flags always override YAML values.
 - Exactly one of `--chart` (OCI reference) or `--bundle-path` (air-gapped assets) must be supplied. `--state-file` and `--state-file-name` are mutually exclusive.
 - Namespace and release defaults are pulled from the profile; flags allow explicit overrides for multi-tenant clusters.
 - State is written to the XDG config directory (`$XDG_CONFIG_HOME/chainctl/state/app.json` by default) unless `--state-file` or `--state-file-name` are provided.
@@ -29,6 +37,7 @@ chainctl app install \
 ### chainctl app upgrade
 ```
 chainctl app upgrade \
+  [--config chainctl.yaml] \
   --cluster-endpoint https://cluster.local \
   --values-file values.enc \
   --values-passphrase <passphrase> \
@@ -41,6 +50,7 @@ chainctl app upgrade \
   [--state-file-name app.json] \
   [--output json]
 ```
+- Declarative configs can specify staging profiles (e.g., namespace overrides) and command-specific defaults; runtime flags can still override individual values.
 - Helm upgrade is driven through the resolver: OCI charts are pulled with digest capture; bundle mode reuses local assets.
 - CLI rejects conflicting sources, invalid OCI references, and invalid state-file paths before contacting the cluster. Namespace can be supplied via flags or profile.
 - On success, state is persisted atomically (0600 file, 0700 directories) and the final path is echoed to the operator.
@@ -49,6 +59,7 @@ chainctl app upgrade \
 ### chainctl cluster install
 ```
 chainctl cluster install \
+  [--config chainctl.yaml] \
   [--bootstrap] \
   [--cluster-endpoint https://cluster.local] \
   --values-file /path/to/values.enc \
@@ -57,6 +68,7 @@ chainctl cluster install \
   [--dry-run] \
   [--output json]
 ```
+- Declarative configs can declare shared defaults (namespace, bundle path, dry-run mode) and per-command overrides. YAML discovery summary prints before host validation begins.
 - Host preflight (CPU, memory, `br_netfilter`, `overlay`, sudo) enforced.
 - Reuse mode loads kubeconfig and validates cluster connectivity.
 - Dry-run returns immediately after validations, logging to `artifacts/dry-run/` via script.

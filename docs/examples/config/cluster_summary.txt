@@ -1,0 +1,10 @@
+Command:    chainctl cluster install
+Source:     docs/examples/config/chainctl.yaml
+Overrides:  runtime overrides namespace (was default)
+
+Flag               Value         Source
+dry-run            true          command
+namespace          runtime-ns    runtime
+output             json          command
+values-file        ./values.enc  default
+values-passphrase  runtime-pass  runtime

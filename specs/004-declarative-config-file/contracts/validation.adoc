@@ -1,0 +1,21 @@
+= Declarative Configuration Validation Contract
+
+== Overview
+chainctl validates declarative YAML files before executing any command. Validation failures block command execution, surface actionable errors, and emit structured logs with the offending keys.
+
+== Validation Steps
+1. **File Discovery**:: Resolve configuration path using precedence `CHAINCTL_CONFIG` → `./chainctl.yaml` → `$XDG_CONFIG_HOME/chainctl/config.yaml` → `~/.config/chainctl/config.yaml`. Missing files after discovery result in `ERR_CONFIG_NOT_FOUND`.
+2. **Parsing**:: Parse YAML with strict duplicate-key detection. Failures return `ERR_CONFIG_PARSE` plus line/column details.
+3. **Secrets Guard**:: Reject files containing sensitive flag names (token/password/secret/kubeconfig). Failure returns `ERR_CONFIG_SECRET_BLOCKED`.
+4. **Schema Validation**:: Ensure the document matches `config-schema.yaml`. Unknown command keys emit `ERR_CONFIG_UNKNOWN_COMMAND`. Unknown flags emit `ERR_CONFIG_UNKNOWN_FLAG` and the exact key path.
+5. **Resolution**:: Merge defaults → command section → runtime flags. Type coercion errors raise `ERR_CONFIG_TYPE_MISMATCH`. Disabled commands raise `ERR_CONFIG_COMMAND_DISABLED`.
+
+== Success Response
+On success, chainctl outputs a summary JSON snippet (when `--output json`) or table (default) showing:
+
+* command path
+* source path
+* applied defaults/profile names
+* runtime overrides
+
+Telemetry includes resolution duration and source path for audit trails.
